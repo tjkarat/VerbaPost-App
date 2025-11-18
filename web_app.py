@@ -7,6 +7,7 @@ import letter_format
 import mailer
 import os
 from PIL import Image
+from datetime import datetime # <--- NEW IMPORT
 
 # --- ROBUST IMPORT ---
 try:
@@ -78,11 +79,8 @@ if recording_mode == "🖥️ Local Mac (Dev)":
             st.session_state.audio_path = path
         st.success("Done.")
 else:
-    # --- UI IMPROVEMENT FOR BROWSER RECORDER ---
-    
-    # Create columns to center the big button
+    # --- UI IMPROVEMENT ---
     c1, c2, c3 = st.columns([1, 2, 1])
-    
     with c2:
         st.markdown("""
         <div style="text-align: center; border: 2px dashed #ccc; padding: 10px; border-radius: 10px;">
@@ -92,12 +90,11 @@ else:
         </div>
         """, unsafe_allow_html=True)
         
-        # BIGGER ICON (150px) and centered layout
         audio_bytes = audio_recorder(
             text="",
-            recording_color="#e8b62c", # Yellow for Stop
-            neutral_color="#6aa36f",   # Green for Start
-            icon_size="150px",         # <--- MASSIVE BUTTON
+            recording_color="#e8b62c",
+            neutral_color="#6aa36f",
+            icon_size="150px",
         )
 
     if audio_bytes:
@@ -129,7 +126,9 @@ if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
                     sig_path = "temp_signature.png"
                     img.save(sig_path)
 
-                pdf_path = letter_format.create_pdf(text_content, full_address, "final_letter.pdf")
+                # Generate the generic file for the system
+                system_path = "final_letter.pdf"
+                pdf_path = letter_format.create_pdf(text_content, full_address, system_path, signature_path=sig_path)
                 
                 st.balloons()
                 if "Heirloom" in service_tier:
@@ -138,5 +137,19 @@ if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
                     st.success("🚀 Sent to API (Standard Tier)")
                     mailer.send_letter(pdf_path)
 
+                # --- UNIQUE FILENAME LOGIC ---
+                # Clean the name (remove spaces)
+                safe_name = "".join(x for x in recipient_name if x.isalnum())
+                # Get timestamp
+                timestamp = datetime.now().strftime("%Y-%m-%d_%H%M")
+                # Create unique name: Letter_to_Tarak_2025-11-18_1430.pdf
+                unique_name = f"Letter_to_{safe_name}_{timestamp}.pdf"
+
                 with open(pdf_path, "rb") as pdf_file:
-                    st.download_button("📄 Download Preview", pdf_file, "letter.pdf", use_container_width=True)
+                    st.download_button(
+                        label="📄 Download PDF Preview", 
+                        data=pdf_file, 
+                        file_name=unique_name, # <--- HERE IS THE FIX
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
