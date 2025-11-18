@@ -47,3 +47,25 @@ def init_db():
 
 if __name__ == "__main__":
     init_db()
+    # ... (keep existing code above)
+
+def create_letter(text_content, user_name="Tarak"):
+    # 1. Create a Session (a conversation with the DB)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    
+    # 2. Find or Create the User
+    # (Simple logic: if Tarak exists, get him. If not, create him.)
+    user = session.query(User).filter_by(username=user_name).first()
+    if not user:
+        user = User(username=user_name, email=f"{user_name}@example.com")
+        session.add(user)
+        session.commit()
+    
+    # 3. Create the Letter
+    new_letter = Letter(content=text_content, author=user)
+    session.add(new_letter)
+    session.commit()
+    
+    print(f"✅ Letter saved to database with ID: {new_letter.id}")
+    session.close()
