@@ -5,11 +5,19 @@ import ai_engine
 import database
 import letter_format
 import mailer
-import recorder
 import os
 from PIL import Image
 from datetime import datetime
 from uszipcode import SearchEngine
+
+# --- ROBUST IMPORT (The Fix) ---
+# We wrap this in a try/except block. 
+# If 'sounddevice' is missing (Cloud), we just disable local mode.
+try:
+    import recorder
+    local_rec_available = True
+except (ImportError, OSError):
+    local_rec_available = False
 
 # --- CONFIG & SETUP ---
 st.set_page_config(page_title="VerbaPost", page_icon="📮")
@@ -30,7 +38,6 @@ def validate_zip(city, state, zipcode):
         return False, "Zip code does not exist."
     
     # State Match Check (Basic)
-    # result.state is usually the 2-letter code (e.g., TN)
     if result.state and state.upper() not in result.state:
          return False, f"Zip {zipcode} belongs to {result.state}, not {state}."
          
@@ -40,7 +47,7 @@ def validate_zip(city, state, zipcode):
 st.title("VerbaPost 📮")
 st.markdown("**The Authenticity Engine.**")
 
-# --- 1. ADDRESS SECTION (Split Sender/Recipient) ---
+# --- 1. ADDRESS SECTION ---
 st.subheader("1. Addressing")
 
 col_to, col_from = st.tabs(["👉 To (Recipient)", "👈 From (Return Address)"])
@@ -63,7 +70,6 @@ with col_from:
     from_zip = c4.text_input("Your Zip", max_chars=5)
 
 # --- VALIDATION GATE ---
-# We don't show the recorder until the 'To' address is valid
 address_valid = False
 if to_name and to_street and to_city and to_state and to_zip:
     is_valid, msg = validate_zip(to_city, to_state, to_zip)
@@ -95,27 +101,31 @@ canvas_result = st_canvas(
 st.divider()
 st.subheader("🎙️ Dictate")
 
-# UI Layout for Recorder
+# UI Layout
 c_rec, c_inst = st.columns([1, 2])
 with c_inst:
     st.caption("Tap the Mic. Speak. Tap again to Stop.")
     st.caption("⚠️ **Wait 2 seconds** after speaking before stopping.")
 
 with c_rec:
-    # TUNED SETTINGS:
-    # pause_threshold=2.0 means it waits 2 seconds of silence before auto-stopping
-    # energy_threshold=300 helps ignore background hiss
-    audio_bytes = audio_recorder(
-        text="",
-        recording_color="#e8b62c",
-        neutral_color="#6aa36f",
-        icon_size="80px",
-        pause_threshold=2.0, 
-    )
+    # Check availability
+    if local_rec_available:
+        # If local is available, user sees both options
+        mode = st.toggle("Dev Mode (Local Mic)", value=False)
+        if mode:
+            if st.button("🔴 Record Local"):
+                path = "temp_letter.wav"
+                recorder.record_audio(filename=path, duration=5)
+                st.session_state.audio_path = path
+            audio_bytes = None
+        else:
+            audio_bytes = audio_recorder(text="", icon_size="80px", pause_threshold=2.0)
+    else:
+        # Cloud mode only
+        audio_bytes = audio_recorder(text="", icon_size="80px", pause_threshold=2.0)
 
 if audio_bytes:
-    # If new audio comes in, overwrite the session state
-    if len(audio_bytes) > 500: # filter small clicks
+    if len(audio_bytes) > 500: 
         path = "temp_browser_recording.wav"
         with open(path, "wb") as f:
             f.write(audio_bytes)
@@ -127,17 +137,11 @@ if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
     st.audio(st.session_state.audio_path)
     
     if st.button("📮 Generate Letter", type="primary", use_container_width=True):
-        # Format Address Block
+        # Format Address Blocks
         full_recipient = f"{to_name}\n{to_street}\n{to_city}, {to_state} {to_zip}"
+        # (Logic to include Return Address in PDF would go here in Day 3)
         
-        # Format Return Address (Handle empty)
-        if from_name:
-            full_return = f"{from_name}\n{from_street}\n{from_city}, {from_state} {from_zip}"
-        else:
-            full_return = "" # No return address
-
         with st.spinner("Processing..."):
-            # Transcribe
             try:
                 text_content = ai_engine.transcribe_audio(st.session_state.audio_path)
             except Exception as e:
@@ -145,21 +149,17 @@ if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
                 text_content = ""
 
             if text_content:
-                # Signature
                 sig_path = None
                 if canvas_result.image_data is not None:
                     img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
                     sig_path = "temp_signature.png"
                     img.save(sig_path)
 
-                # PDF (Now passing return address logic would happen here, 
-                # but we will stick to recipient for today's PDF update)
                 pdf_path = letter_format.create_pdf(text_content, full_recipient, "final_letter.pdf", sig_path)
                 
                 st.balloons()
                 st.success("Letter Ready!")
                 
-                # Unique Filename
                 safe_name = "".join(x for x in to_name if x.isalnum())
                 unique_name = f"Letter_{safe_name}_{datetime.now().strftime('%H%M')}.pdf"
 
