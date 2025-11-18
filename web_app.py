@@ -7,7 +7,6 @@ import letter_format
 import mailer
 import os
 from PIL import Image
-import io
 
 # --- ROBUST IMPORT ---
 try:
@@ -43,20 +42,19 @@ with col2:
     state_zip = st.text_input("State/Zip", placeholder="TN 37122")
 
 if not recipient_name or not street or not city or not state_zip:
-    st.warning("Please fill out the address to proceed.")
+    st.info("👇 **Please fill out the full address above to unlock the recorder.**")
     st.stop()
 
-# --- 3. SIGNATURE (UPDATED) ---
+# --- 3. SIGNATURE ---
 st.divider()
 st.subheader("3. Sign Your Letter")
 st.markdown("Draw your signature below:")
 
-# Updated Canvas with WHITE background
 canvas_result = st_canvas(
     fill_color="rgba(255, 165, 0, 0.3)",
     stroke_width=2,
     stroke_color="#000000",
-    background_color="#ffffff", # <--- CHANGED TO WHITE
+    background_color="#ffffff",
     height=150,
     width=400,
     drawing_mode="freedraw",
@@ -80,8 +78,30 @@ if recording_mode == "🖥️ Local Mac (Dev)":
             st.session_state.audio_path = path
         st.success("Done.")
 else:
-    audio_bytes = audio_recorder(text="", icon_size="50px")
+    # --- UI IMPROVEMENT FOR BROWSER RECORDER ---
+    
+    # Create columns to center the big button
+    c1, c2, c3 = st.columns([1, 2, 1])
+    
+    with c2:
+        st.markdown("""
+        <div style="text-align: center; border: 2px dashed #ccc; padding: 10px; border-radius: 10px;">
+            <h4>🎙️ Instructions</h4>
+            <p>1. Tap the <b>Green Mic</b> to START.</p>
+            <p>2. Tap the <b>Yellow Square</b> to STOP.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # BIGGER ICON (150px) and centered layout
+        audio_bytes = audio_recorder(
+            text="",
+            recording_color="#e8b62c", # Yellow for Stop
+            neutral_color="#6aa36f",   # Green for Start
+            icon_size="150px",         # <--- MASSIVE BUTTON
+        )
+
     if audio_bytes:
+        st.success("✅ Audio Captured! Scroll down to generate.")
         path = "temp_browser_recording.wav"
         with open(path, "wb") as f:
             f.write(audio_bytes)
@@ -89,9 +109,10 @@ else:
 
 # --- 5. GENERATE ---
 if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
+    st.divider()
     st.audio(st.session_state.audio_path)
     
-    if st.button("📮 Generate Letter", type="primary"):
+    if st.button("📮 Generate & Mail Letter", type="primary", use_container_width=True):
         full_address = f"{recipient_name}\n{street}\n{city}, {state_zip}"
         
         with st.spinner("🧠 AI Transcribing & Rendering..."):
@@ -118,4 +139,4 @@ if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
                     mailer.send_letter(pdf_path)
 
                 with open(pdf_path, "rb") as pdf_file:
-                    st.download_button("📄 Download Preview", pdf_file, "letter.pdf")
+                    st.download_button("📄 Download Preview", pdf_file, "letter.pdf", use_container_width=True)
