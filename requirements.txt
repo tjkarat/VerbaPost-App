@@ -8,3 +8,4 @@ requests
 numpy
 zipcodes
 stripe
+psycopg2-binary
