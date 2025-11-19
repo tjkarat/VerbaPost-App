@@ -1,20 +1,30 @@
 import whisper
 import sys
+import re
 
-# Note: This function is at the "root" level (no indentation)
-def transcribe_audio(filename="test_recording.wav"):
-    print("🧠 Loading the Whisper AI model...")
-    model = whisper.load_model("base")
-    
+# Load model once at start to save time
+# 'tiny' is faster for cloud, 'base' is better accuracy
+model = whisper.load_model("base")
+
+def transcribe_audio(filename):
     print(f"🎧 Transcribing {filename}...")
     result = model.transcribe(filename)
-    
-    text = result["text"]
-    print("\n--- TRANSCRIPTION RESULT ---")
-    print(text)
-    
-    return text
+    return result["text"]
 
-if __name__ == "__main__":
-    # This block only runs if you execute this file directly
-    transcribe_audio()
+def polish_text(text):
+    """
+    Basic AI Cleanup: Removes filler words and fixes basic spacing.
+    In the future, we connect this to GPT-4 for full rewriting.
+    """
+    # Simple cleanup rules
+    fillers = ["um", "uh", "ah", "like, you know", "you know"]
+    
+    polished = text
+    for filler in fillers:
+        # Case insensitive replace
+        pattern = re.compile(re.escape(filler), re.IGNORECASE)
+        polished = pattern.sub("", polished)
+    
+    # Fix double spaces created by removals
+    polished = " ".join(polished.split())
+    return polished

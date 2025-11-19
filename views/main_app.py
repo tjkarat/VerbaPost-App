@@ -5,7 +5,7 @@ import os
 from PIL import Image
 from datetime import datetime
 
-# Import core logic modules
+# Import core logic
 import ai_engine
 import database
 import letter_format
@@ -13,9 +13,6 @@ import mailer
 import zipcodes
 
 # --- CONFIGURATION ---
-# 3 Minutes * 60 Seconds = 180 Seconds.
-# Approx 1MB per minute for WAV. 3 Minutes ~= 3-4MB.
-# We set a safe threshold of 5MB before triggering the "Overage" warning.
 MAX_BYTES_THRESHOLD = 5 * 1024 * 1024 
 
 def validate_zip(zipcode, state):
@@ -25,19 +22,22 @@ def validate_zip(zipcode, state):
          return False, f"Zip is in {details[0]['state']}, not {state}"
     return True, "Valid"
 
-def reset_recording_state():
+def reset_app():
     st.session_state.audio_path = None
     st.session_state.transcribed_text = ""
+    st.session_state.app_mode = "recording"
     st.rerun()
 
 def show_main_app():
-    # --- 0. INIT SESSION STATE ---
+    # --- INIT STATE ---
+    if "app_mode" not in st.session_state:
+        st.session_state.app_mode = "recording"
     if "audio_path" not in st.session_state:
         st.session_state.audio_path = None
     if "transcribed_text" not in st.session_state:
         st.session_state.transcribed_text = ""
     
-    # --- 1. ADDRESSING SECTION ---
+    # --- 1. ADDRESSING ---
     st.subheader("1. Addressing")
     col_to, col_from = st.tabs(["👉 Recipient", "👈 Sender"])
 
@@ -64,12 +64,10 @@ def show_main_app():
     # --- 2. SETTINGS & SIGNATURE ---
     st.divider()
     c_set, c_sig = st.columns(2)
-    
     with c_set:
         st.subheader("Settings")
         service_tier = st.radio("Tier:", ["⚡ Standard ($2.50)", "🏺 Heirloom ($5.00)", "🏛️ Civic ($6.00)"])
         is_heirloom = "Heirloom" in service_tier
-
     with c_sig:
         st.subheader("Sign")
         canvas_result = st_canvas(
@@ -78,95 +76,123 @@ def show_main_app():
             height=100, width=200, drawing_mode="freedraw", key="sig"
         )
 
-    # --- 3. RECORDING (Overhauled) ---
-    st.divider()
-    st.subheader("🎙️ Dictate")
-    
-    # Explicit Warnings/Instructions
-    st.markdown("""
-    <div style="background-color: #fff3cd; padding: 10px; border-radius: 5px; border: 1px solid #ffeeba; color: #856404;">
-        <strong>⏱️ Time Limit:</strong> 3 Minutes included.<br>
-        <em>Recordings over 3 minutes will incur an extra $1.00 transcription fee.</em>
-    </div>
-    <br>
-    """, unsafe_allow_html=True)
-
-    # Visual Cues
-    st.caption("Tap icon to START. Tap again to STOP. Wait for 'Processing'.")
-
-    # The Massive Recorder
-    audio_bytes = audio_recorder(
-        text="",
-        recording_color="#ff0000", # Bright RED for active recording
-        neutral_color="#333333",   # Dark Grey for idle
-        icon_size="120px",         # Huge button
-        pause_threshold=60.0       # Don't stop automatically
-    )
-
-    # --- PROCESSING LOGIC ---
-    if audio_bytes:
-        # 1. Check File Size (Overage Logic)
-        file_size = len(audio_bytes)
+    # ==================================================
+    #  STATE 1: RECORDING
+    # ==================================================
+    if st.session_state.app_mode == "recording":
+        st.divider()
+        st.subheader("🎙️ Dictate")
         
-        # 2. Processing Indicator
-        with st.spinner(f"Processing {file_size} bytes of audio..."):
-            path = "temp_browser_recording.wav"
-            with open(path, "wb") as f:
-                f.write(audio_bytes)
-            st.session_state.audio_path = path
-            
-        # 3. Feedback to User
-        if file_size > MAX_BYTES_THRESHOLD:
-            st.warning("⚠️ **Long Letter Detected:** This recording is over 3 minutes. An extra charge will apply at checkout.")
-            st.success("✅ Audio Captured (Long). Ready to Transcribe.")
-        elif file_size > 2000:
-            st.success("✅ Audio Captured. Ready to Transcribe.")
-        else:
-            st.error("❌ Recording too short. Please tap the button firmly and speak clearly.")
-            st.session_state.audio_path = None # Reset
+        # INSTRUCTIONS
+        st.markdown("""
+        <div style="background-color:#f0f2f6; padding:10px; border-radius:5px; text-align:center;">
+            <p style="margin:0;">Tap to <b>START</b> (Red) &nbsp;|&nbsp; Tap to <b>STOP</b> (Grey)</p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # --- 4. GENERATE & SEND ---
-    if st.session_state.audio_path and os.path.exists(st.session_state.audio_path):
-        
-        if st.button("🚀 Generate & Mail Letter", type="primary", use_container_width=True):
-            with st.spinner("Processing..."):
-                # A. Transcribe
+        # RECORDER
+        # We use columns to center it perfectly
+        c_left, c_center, c_right = st.columns([1,1,1])
+        with c_center:
+            audio_bytes = audio_recorder(
+                text="",
+                recording_color="#ff0000",
+                neutral_color="#333333",
+                icon_size="100px",
+                pause_threshold=60.0
+            )
+
+        if audio_bytes:
+            # Save Audio
+            with st.spinner("Saving Audio..."):
+                path = "temp_browser_recording.wav"
+                with open(path, "wb") as f:
+                    f.write(audio_bytes)
+                st.session_state.audio_path = path
+                
+                # Auto-transcribe to move to next step
                 try:
-                    text_content = ai_engine.transcribe_audio(st.session_state.audio_path)
+                    text = ai_engine.transcribe_audio(path)
+                    st.session_state.transcribed_text = text
+                    st.session_state.app_mode = "editing" # <--- MOVE TO EDIT
+                    st.rerun()
                 except Exception as e:
-                    st.error(f"Transcription Failed: {e}")
-                    return
+                    st.error(f"Error: {e}")
 
-                # B. Save Signature Image
-                sig_path = None
-                if canvas_result.image_data is not None:
-                    img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
-                    sig_path = "temp_signature.png"
-                    img.save(sig_path)
+    # ==================================================
+    #  STATE 2: EDITING (The New Request)
+    # ==================================================
+    elif st.session_state.app_mode == "editing":
+        st.divider()
+        st.subheader("📝 Review & Edit")
+        
+        # Audio Playback
+        st.audio(st.session_state.audio_path)
+        
+        # The Editor Box
+        edited_text = st.text_area(
+            "Make changes below:", 
+            value=st.session_state.transcribed_text, 
+            height=250
+        )
+        
+        # Action Buttons
+        c_ai, c_reset = st.columns([1, 3])
+        with c_ai:
+            if st.button("✨ AI Polish"):
+                # Calls the new function in ai_engine
+                polished = ai_engine.polish_text(edited_text)
+                st.session_state.transcribed_text = polished
+                st.rerun()
+        with c_reset:
+            if st.button("🗑️ Trash & Re-Record"):
+                reset_app()
 
-                # C. Create PDF
-                full_recipient = f"{to_name}\n{to_street}\n{to_city}, {to_state} {to_zip}"
-                full_return = f"{from_name}\n{from_street}\n{from_city}, {from_state} {from_zip}" if from_name else ""
-                
-                pdf_path = letter_format.create_pdf(
-                    text_content, full_recipient, full_return, is_heirloom, "final_letter.pdf", sig_path
-                )
-                
-                # D. Final UI
-                st.balloons()
-                st.success("Generated Successfully!")
-                st.text_area("Final Text:", value=text_content)
-                
-                if not is_heirloom:
-                    # In production, check payment status here first!
-                    mailer.send_letter(pdf_path)
+        st.markdown("---")
+        
+        # FINAL CONFIRMATION
+        if st.button("🚀 Approve & Generate PDF", type="primary", use_container_width=True):
+            st.session_state.transcribed_text = edited_text
+            st.session_state.app_mode = "finalizing"
+            st.rerun()
 
-                # Unique Filename
-                safe_name = "".join(x for x in to_name if x.isalnum())
-                unique_name = f"Letter_{safe_name}_{datetime.now().strftime('%H%M')}.pdf"
+    # ==================================================
+    #  STATE 3: FINALIZING
+    # ==================================================
+    elif st.session_state.app_mode == "finalizing":
+        st.divider()
+        with st.status("✉️ Printing Letter...", expanded=True):
+            full_recipient = f"{to_name}\n{to_street}\n{to_city}, {to_state} {to_zip}"
+            full_return = f"{from_name}\n{from_street}\n{from_city}, {from_state} {from_zip}" if from_name else ""
 
-                with open(pdf_path, "rb") as pdf_file:
-                    st.download_button("📄 Download PDF", pdf_file, unique_name, "application/pdf", use_container_width=True)
+            sig_path = None
+            if canvas_result.image_data is not None:
+                img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
+                sig_path = "temp_signature.png"
+                img.save(sig_path)
 
-                if st.button("Start Over"):
-                    reset_recording_state()
+            pdf_path = letter_format.create_pdf(
+                st.session_state.transcribed_text, 
+                full_recipient, 
+                full_return, 
+                is_heirloom, 
+                "final_letter.pdf", 
+                sig_path
+            )
+            
+            if not is_heirloom:
+                mailer.send_letter(pdf_path)
+            
+            st.write("✅ Done!")
+
+        st.balloons()
+        st.success("Letter Generated Successfully!")
+        
+        safe_name = "".join(x for x in to_name if x.isalnum())
+        unique_name = f"Letter_{safe_name}_{datetime.now().strftime('%H%M')}.pdf"
+
+        with open(pdf_path, "rb") as pdf_file:
+            st.download_button("📄 Download PDF", pdf_file, unique_name, "application/pdf", use_container_width=True)
+
+        if st.button("Start New Letter"):
+            reset_app()
