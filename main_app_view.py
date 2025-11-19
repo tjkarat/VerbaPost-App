@@ -10,7 +10,7 @@ import database
 import letter_format
 import mailer
 import zipcodes
-import payment_engine # <--- ENSURE THIS IS IMPORTED
+import payment_engine
 
 # --- CONFIGURATION ---
 MAX_BYTES_THRESHOLD = 35 * 1024 * 1024 
@@ -27,7 +27,7 @@ def reset_app():
     st.session_state.transcribed_text = ""
     st.session_state.app_mode = "recording"
     st.session_state.overage_agreed = False
-    st.session_state.payment_complete = False # New Flag
+    st.session_state.payment_complete = False
     st.rerun()
 
 def show_main_app():
@@ -99,7 +99,6 @@ def show_main_app():
                     f.write(audio_value.getvalue())
                 st.session_state.audio_path = path
                 
-                # Overage Check
                 file_size = audio_value.getbuffer().nbytes
                 if file_size > MAX_BYTES_THRESHOLD:
                     status.update(label="⚠️ Recording too long!", state="error")
@@ -136,8 +135,8 @@ def show_main_app():
     elif st.session_state.app_mode == "editing":
         st.divider()
         st.subheader("📝 Review")
-        
         st.audio(st.session_state.audio_path)
+        
         if st.session_state.overage_agreed:
             st.caption("💲 Overage Fee Applied: +$1.00")
 
@@ -160,39 +159,35 @@ def show_main_app():
             st.rerun()
 
     # ==================================================
-    #  STATE 3: PAYMENT & FINALIZING (The Payment Gate)
+    #  STATE 3: PAYMENT & FINALIZING
     # ==================================================
     elif st.session_state.app_mode == "finalizing":
         st.divider()
         st.subheader("💰 Checkout")
 
-        # 1. Calculate Price
         base_price = 5.00 if is_heirloom else 2.50
         final_price = base_price + (1.00 if st.session_state.overage_agreed else 0.00)
-        
         st.info(f"Total: ${final_price:.2f}")
 
-        # 2. The Payment Gate
         if not st.session_state.payment_complete:
-            # Generate Link
+            # ERROR HANDLING: Check if link generation failed
             checkout_url = payment_engine.create_checkout_session(
                 product_name=f"VerbaPost {service_tier}",
                 amount_in_cents=int(final_price * 100),
-                success_url="https://google.com", # Redirects here on success (placeholder)
+                success_url="https://google.com", 
                 cancel_url="https://google.com"
             )
             
-            st.link_button(f"💳 Pay ${final_price:.2f} (Stripe Test)", checkout_url)
-            
-            st.markdown("---")
-            st.caption("Use Stripe Test Card: 4242 4242 4242 4242")
-            
-            # The "I Paid" Button (Simulates Webhook)
-            if st.button("✅ I Have Paid"):
-                st.session_state.payment_complete = True
-                st.rerun()
+            if "Error" in checkout_url:
+                st.error("⚠️ Stripe Error: Keys not found. Please add keys to Streamlit Secrets.")
+                st.code(checkout_url) # Show the exact error to debug
+            else:
+                st.link_button(f"💳 Pay ${final_price:.2f}", checkout_url)
+                st.markdown("---")
+                if st.button("✅ I Have Paid"):
+                    st.session_state.payment_complete = True
+                    st.rerun()
 
-        # 3. Success! (Only shows AFTER payment)
         else:
             with st.status("✉️ Processing...", expanded=True):
                 full_recipient = f"{to_name}\n{to_street}\n{to_city}, {to_state} {to_zip}"
@@ -208,11 +203,7 @@ def show_main_app():
                     st.session_state.transcribed_text, full_recipient, full_return, is_heirloom, "final_letter.pdf", sig_path
                 )
                 
-                if not is_heirloom:
-                    st.write("🚀 Sending to API...")
-                    # mailer.send_letter(pdf_path)
-                
-                st.write("✅ Sent!")
+                st.write("✅ Done!")
 
             st.balloons()
             st.success("Order Complete!")
@@ -221,7 +212,7 @@ def show_main_app():
             unique_name = f"Letter_{safe_name}_{datetime.now().strftime('%H%M')}.pdf"
 
             with open(pdf_path, "rb") as pdf_file:
-                st.download_button("📄 Download Receipt & Copy", pdf_file, unique_name, "application/pdf", use_container_width=True)
+                st.download_button("📄 Download Receipt", pdf_file, unique_name, "application/pdf", use_container_width=True)
 
             if st.button("Start New Letter"):
                 reset_app()
