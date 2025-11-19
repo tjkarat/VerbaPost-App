@@ -10,10 +10,9 @@ import database
 import letter_format
 import mailer
 import zipcodes
+import payment_engine # <--- ENSURE THIS IS IMPORTED
 
 # --- CONFIGURATION ---
-# 3 Minutes of WAV (44.1kHz, 16-bit) is roughly 30-32MB.
-# We set the limit to 35MB to be safe.
 MAX_BYTES_THRESHOLD = 35 * 1024 * 1024 
 
 def validate_zip(zipcode, state):
@@ -28,6 +27,7 @@ def reset_app():
     st.session_state.transcribed_text = ""
     st.session_state.app_mode = "recording"
     st.session_state.overage_agreed = False
+    st.session_state.payment_complete = False # New Flag
     st.rerun()
 
 def show_main_app():
@@ -40,6 +40,8 @@ def show_main_app():
         st.session_state.transcribed_text = ""
     if "overage_agreed" not in st.session_state:
         st.session_state.overage_agreed = False
+    if "payment_complete" not in st.session_state:
+        st.session_state.payment_complete = False
     
     # --- 1. ADDRESSING ---
     st.subheader("1. Addressing")
@@ -70,7 +72,6 @@ def show_main_app():
     c_set, c_sig = st.columns(2)
     with c_set:
         st.subheader("Settings")
-        # Explicit pricing in labels
         service_tier = st.radio("Service Level:", ["⚡ Standard ($2.50)", "🏺 Heirloom ($5.00)", "🏛️ Civic ($6.00)"])
         is_heirloom = "Heirloom" in service_tier
     with c_sig:
@@ -82,54 +83,41 @@ def show_main_app():
         )
 
     # ==================================================
-    #  STATE 1: RECORDING (Native Waveform)
+    #  STATE 1: RECORDING
     # ==================================================
     if st.session_state.app_mode == "recording":
         st.divider()
         st.subheader("🎙️ Dictate")
-        
-        # WARNING BOX
-        st.warning("⏱️ **Time Limit:** 3 Minutes. (Longer recordings add +$1.00 fee).")
+        st.warning("⏱️ **Time Limit:** 3 Minutes.")
 
-        # NATIVE RECORDER
         audio_value = st.audio_input("Record your letter")
 
         if audio_value:
-            # IMMEDIATE FEEDBACK INDICATOR
             with st.status("⚙️ Processing Audio...", expanded=True) as status:
-                
-                # 1. Check Size
-                file_size = audio_value.getbuffer().nbytes
-                st.write(f"📏 Size: {round(file_size/(1024*1024), 2)} MB")
-
-                # 2. Save File
                 path = "temp_browser_recording.wav"
                 with open(path, "wb") as f:
                     f.write(audio_value.getvalue())
                 st.session_state.audio_path = path
                 
-                # 3. Overage Logic
+                # Overage Check
+                file_size = audio_value.getbuffer().nbytes
                 if file_size > MAX_BYTES_THRESHOLD:
                     status.update(label="⚠️ Recording too long!", state="error")
                     st.error("Recording exceeds 3 minutes.")
-                    
-                    col_pay, col_del = st.columns(2)
-                    if col_pay.button("💳 Accept +$1.00 Charge"):
+                    if st.button("💳 Agree to +$1.00 Charge"):
                         st.session_state.overage_agreed = True
                         st.session_state.app_mode = "transcribing"
                         st.rerun()
-                    if col_del.button("🗑️ Delete & Retry"):
+                    if st.button("🗑️ Delete & Retry"):
                         reset_app()
-                    
-                    st.stop() # Halt here until they choose
-                
+                    st.stop()
                 else:
                     status.update(label="✅ Uploaded! Starting Transcription...", state="complete")
                     st.session_state.app_mode = "transcribing"
                     st.rerun()
 
     # ==================================================
-    #  STATE 1.5: TRANSCRIBING (Auto)
+    #  STATE 1.5: TRANSCRIBING
     # ==================================================
     elif st.session_state.app_mode == "transcribing":
         with st.spinner("🧠 AI is writing your letter..."):
@@ -149,17 +137,11 @@ def show_main_app():
         st.divider()
         st.subheader("📝 Review")
         
-        # Show Audio Player to reference
         st.audio(st.session_state.audio_path)
-        
         if st.session_state.overage_agreed:
             st.caption("💲 Overage Fee Applied: +$1.00")
 
-        edited_text = st.text_area(
-            "Edit Text:", 
-            value=st.session_state.transcribed_text, 
-            height=300
-        )
+        edited_text = st.text_area("Edit Text:", value=st.session_state.transcribed_text, height=300)
         
         c_ai, c_reset = st.columns([1, 3])
         with c_ai:
@@ -178,43 +160,68 @@ def show_main_app():
             st.rerun()
 
     # ==================================================
-    #  STATE 3: FINALIZING
+    #  STATE 3: PAYMENT & FINALIZING (The Payment Gate)
     # ==================================================
     elif st.session_state.app_mode == "finalizing":
         st.divider()
-        with st.status("✉️ Printing Letter...", expanded=True):
-            full_recipient = f"{to_name}\n{to_street}\n{to_city}, {to_state} {to_zip}"
-            full_return = f"{from_name}\n{from_street}\n{from_city}, {from_state} {from_zip}" if from_name else ""
+        st.subheader("💰 Checkout")
 
-            sig_path = None
-            if canvas_result.image_data is not None:
-                img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
-                sig_path = "temp_signature.png"
-                img.save(sig_path)
+        # 1. Calculate Price
+        base_price = 5.00 if is_heirloom else 2.50
+        final_price = base_price + (1.00 if st.session_state.overage_agreed else 0.00)
+        
+        st.info(f"Total: ${final_price:.2f}")
 
-            pdf_path = letter_format.create_pdf(
-                st.session_state.transcribed_text, 
-                full_recipient, 
-                full_return, 
-                is_heirloom, 
-                "final_letter.pdf", 
-                sig_path
+        # 2. The Payment Gate
+        if not st.session_state.payment_complete:
+            # Generate Link
+            checkout_url = payment_engine.create_checkout_session(
+                product_name=f"VerbaPost {service_tier}",
+                amount_in_cents=int(final_price * 100),
+                success_url="https://google.com", # Redirects here on success (placeholder)
+                cancel_url="https://google.com"
             )
             
-            if not is_heirloom:
-                st.write("🚀 Sending to API...")
-                # mailer.send_letter(pdf_path)
+            st.link_button(f"💳 Pay ${final_price:.2f} (Stripe Test)", checkout_url)
             
-            st.write("✅ Done!")
+            st.markdown("---")
+            st.caption("Use Stripe Test Card: 4242 4242 4242 4242")
+            
+            # The "I Paid" Button (Simulates Webhook)
+            if st.button("✅ I Have Paid"):
+                st.session_state.payment_complete = True
+                st.rerun()
 
-        st.balloons()
-        st.success("Letter Generated!")
-        
-        safe_name = "".join(x for x in to_name if x.isalnum())
-        unique_name = f"Letter_{safe_name}_{datetime.now().strftime('%H%M')}.pdf"
+        # 3. Success! (Only shows AFTER payment)
+        else:
+            with st.status("✉️ Processing...", expanded=True):
+                full_recipient = f"{to_name}\n{to_street}\n{to_city}, {to_state} {to_zip}"
+                full_return = f"{from_name}\n{from_street}\n{from_city}, {from_state} {from_zip}" if from_name else ""
 
-        with open(pdf_path, "rb") as pdf_file:
-            st.download_button("📄 Download PDF", pdf_file, unique_name, "application/pdf", use_container_width=True)
+                sig_path = None
+                if canvas_result.image_data is not None:
+                    img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
+                    sig_path = "temp_signature.png"
+                    img.save(sig_path)
 
-        if st.button("Start New Letter"):
-            reset_app()
+                pdf_path = letter_format.create_pdf(
+                    st.session_state.transcribed_text, full_recipient, full_return, is_heirloom, "final_letter.pdf", sig_path
+                )
+                
+                if not is_heirloom:
+                    st.write("🚀 Sending to API...")
+                    # mailer.send_letter(pdf_path)
+                
+                st.write("✅ Sent!")
+
+            st.balloons()
+            st.success("Order Complete!")
+            
+            safe_name = "".join(x for x in to_name if x.isalnum())
+            unique_name = f"Letter_{safe_name}_{datetime.now().strftime('%H%M')}.pdf"
+
+            with open(pdf_path, "rb") as pdf_file:
+                st.download_button("📄 Download Receipt & Copy", pdf_file, unique_name, "application/pdf", use_container_width=True)
+
+            if st.button("Start New Letter"):
+                reset_app()
