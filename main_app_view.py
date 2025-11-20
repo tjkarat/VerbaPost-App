@@ -129,4 +129,4 @@ def show_main_app():
             st.error("⚠️ Stripe Error: Keys not found.")
         else:
             c_pay, c_verify = st.columns(2)
-            with
+            with# Re-upload trigger
