@@ -9,7 +9,7 @@ def show_splash():
     # --- HERO ---
     st.title("VerbaPost 📮")
     
-    # The New Copy
+    # The New Tagline
     st.markdown(
         """
         ### Texts are trivial. Emails are ignored.
