@@ -1,16 +1,9 @@
 import streamlit as st
 
-# Version 3.0 - Final HTML Grid
+# Version 4.0 - Final HTML Grid Alignment
 def show_splash():
-    # --- CONFIG ---
-    P_STANDARD = "$2.99"
-    P_HEIRLOOM = "$5.99"
-    P_CIVIC = "$6.99"
-
-    # --- HERO ---
     st.title("VerbaPost 📮")
     st.subheader("The Authenticity Engine.")
-    # The New Tagline
     st.markdown("##### Texts are trivial. Emails are ignored. Real letters get read.")
     
     st.divider()
