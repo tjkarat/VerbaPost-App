@@ -2,29 +2,31 @@ from sqlalchemy import create_engine, Column, Integer, String, DateTime, Foreign
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from datetime import datetime
 import streamlit as st
+from sqlalchemy.engine import Engine
 
 Base = declarative_base()
 
-# --- CONNECTION ---
-def get_engine():
+# --- CONNECTION LOGIC (No longer runs globally) ---
+def get_engine() -> Engine:
+    """Retrieves the SQLAlchemy engine instance, favoring Cloud Secrets."""
     try:
         db_url = st.secrets["connections"]["database_url"]
+        # Fix for cloud driver name
         if db_url.startswith("postgres://"):
             db_url = db_url.replace("postgres://", "postgresql://", 1)
         return create_engine(db_url)
     except:
+        # Fallback for local testing if secrets are missing
         return create_engine('sqlite:///verbapost.db')
-
-engine = get_engine()
 
 # --- MODELS ---
 class User(Base):
     __tablename__ = 'users'
     id = Column(Integer, primary_key=True)
-    username = Column(String, unique=True, nullable=False) # This will be the Email
+    username = Column(String, unique=True, nullable=False)
     email = Column(String, unique=True, nullable=False)
     
-    # New Columns for Return Address
+    # Address Fields
     address_name = Column(String, nullable=True)
     address_street = Column(String, nullable=True)
     address_city = Column(String, nullable=True)
@@ -42,33 +44,34 @@ class Letter(Base):
     user_id = Column(Integer, ForeignKey('users.id'))
     author = relationship("User", back_populates="letters")
 
-def init_db():
-    Base.metadata.create_all(engine)
-
 # --- HELPER FUNCTIONS ---
+def init_db():
+    Base.metadata.create_all(get_engine())
+
+def get_session():
+    """Returns a new session bound to the dynamically created engine."""
+    Session = sessionmaker(bind=get_engine())
+    return Session()
+
 def get_user_by_email(email):
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session = get_session()
     user = session.query(User).filter_by(email=email).first()
     session.close()
     return user
 
 def create_or_get_user(email):
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session = get_session()
     user = session.query(User).filter_by(email=email).first()
     if not user:
         user = User(username=email, email=email)
         session.add(user)
         session.commit()
-        # Refresh to get the ID
         session.refresh(user)
     session.close()
     return user
 
 def update_user_address(email, name, street, city, state, zip_code):
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session = get_session()
     user = session.query(User).filter_by(email=email).first()
     if user:
         user.address_name = name
@@ -80,8 +83,7 @@ def update_user_address(email, name, street, city, state, zip_code):
     session.close()
 
 def save_letter_to_history(user_email, text_content):
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session = get_session()
     user = session.query(User).filter_by(email=user_email).first()
     if user:
         new_letter = Letter(content=text_content, author=user, status="Paid")
@@ -91,3 +93,4 @@ def save_letter_to_history(user_email, text_content):
 
 if __name__ == "__main__":
     init_db()
+    print("Database Initialized.")
