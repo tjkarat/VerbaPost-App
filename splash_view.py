@@ -1,7 +1,13 @@
 import streamlit as st
 
-# Version 4.0 - Final HTML Grid Alignment
+# Version 5.0 - Final HTML Grid
 def show_splash():
+    # --- CONFIG ---
+    P_STANDARD = ".99"
+    P_HEIRLOOM = ".99"
+    P_CIVIC = ".99"
+
+    # --- HERO ---
     st.title("VerbaPost 📮")
     st.subheader("The Authenticity Engine.")
     st.markdown("##### Texts are trivial. Emails are ignored. Real letters get read.")
@@ -26,6 +32,7 @@ def show_splash():
     # --- PRICING TIERS (HTML GRID) ---
     st.subheader("Simple Pricing")
     
+    # We define the HTML structure to be rendered via markdown
     html_pricing = """
     <style>
         .price-card {
@@ -66,7 +73,7 @@ def show_splash():
         <div class="price-card">
             <div>
                 <div class="price-title">⚡ Standard</div>
-                <div class="price-tag">&#36;2.99</div>
+                <div class="price-tag">&#36;""" + P_STANDARD[1:] + """</div>
                 <div class="price-desc">API Fulfillment<br>Window Envelope<br>Mailed in 24hrs</div>
             </div>
         </div>
@@ -74,7 +81,7 @@ def show_splash():
         <div class="price-card" style="border: 2px solid #4CAF50; background-color: #f0fff4;">
             <div>
                 <div class="price-title">🏺 Heirloom</div>
-                <div class="price-tag">&#36;5.99</div>
+                <div class="price-tag">&#36;""" + P_HEIRLOOM[1:] + """</div>
                 <div class="price-desc">Hand-Stamped<br>Premium Paper<br>Mailed from Nashville</div>
             </div>
         </div>
@@ -82,13 +89,14 @@ def show_splash():
         <div class="price-card">
             <div>
                 <div class="price-title">🏛️ Civic Blast</div>
-                <div class="price-tag">&#36;6.99</div>
+                <div class="price-tag">&#36;""" + P_CIVIC[1:] + """</div>
                 <div class="price-desc">Activism Mode<br>Auto-Find Reps<br>Mails Senate + House</div>
             </div>
         </div>
     </div>
     """
-    st.markdown(html_pricing, unsafe_allow_html=True)
+    # The crucial line to display HTML safely
+    st.markdown(html_pricing, unsafe_allow_html=True) 
 
     st.divider()
 
