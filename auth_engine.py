@@ -1,44 +1,47 @@
 import streamlit as st
-from supabase import create_client, Client
+from gotrue.client import Client
+import database
 
-# Initialize connection once and cache it
-@st.cache_resource
-def init_supabase():
-    url = st.secrets["supabase"]["url"]
-    key = st.secrets["supabase"]["key"]
-    return create_client(url, key)
+# Load Supabase Config
+url = st.secrets.get("supabase", {}).get("url", "")
+key = st.secrets.get("supabase", {}).get("key", "")
 
-supabase = init_supabase()
+try:
+    auth_client = Client(url=url, headers={"apikey": key})
+except:
+    auth_client = None
 
 def sign_up(email, password):
-    """Creates a new user in Supabase Auth"""
+    if not auth_client: return None, "Supabase credentials missing"
     try:
-        res = supabase.auth.sign_up({
-            "email": email, 
-            "password": password
-        })
-        # Auto-login after signup if confirmation is disabled
-        st.session_state.user = res.user
-        return True, None
+        response = auth_client.sign_up(email=email, password=password)
+        # Ensure they exist in our SQL DB immediately
+        if response:
+            database.create_or_get_user(email)
+        return response, None
     except Exception as e:
-        return False, str(e)
+        return None, str(e)
 
 def sign_in(email, password):
-    """Logs in an existing user"""
+    if not auth_client: return None, "Supabase credentials missing"
     try:
-        res = supabase.auth.sign_in_with_password({
-            "email": email, 
-            "password": password
-        })
-        st.session_state.user = res.user
-        return True, None
+        response = auth_client.sign_in(email=email, password=password)
+        # Ensure syncing
+        if response:
+            database.create_or_get_user(email)
+        return response, None
     except Exception as e:
-        return False, str(e)
+        return None, str(e)
 
-def sign_out():
-    """Clears session"""
-    supabase.auth.sign_out()
-    st.session_state.user = None
-    # Clear other session data for safety
-    if "audio_path" in st.session_state: del st.session_state["audio_path"]
-    st.rerun()
+def get_current_address(email):
+    """Retrieves the saved address for the logged-in user."""
+    user = database.get_user_by_email(email)
+    if user:
+        return {
+            "name": user.address_name or "",
+            "street": user.address_street or "",
+            "city": user.address_city or "",
+            "state": user.address_state or "",
+            "zip": user.address_zip or ""
+        }
+    return {}
