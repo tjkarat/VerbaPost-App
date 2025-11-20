@@ -14,7 +14,6 @@ import payment_engine
 
 # --- CONFIGURATION ---
 MAX_BYTES_THRESHOLD = 35 * 1024 * 1024 
-# YOUR APP URL
 YOUR_APP_URL = "https://verbapost.streamlit.app" 
 
 # --- PRICING ---
@@ -44,7 +43,7 @@ def reset_app():
     st.rerun()
 
 def show_main_app():
-    # --- 0. AUTO-DETECT RETURN FROM STRIPE ---
+    # --- AUTO-DETECT RETURN FROM STRIPE ---
     if "session_id" in st.query_params:
         session_id = st.query_params["session_id"]
         if payment_engine.check_payment_status(session_id):
@@ -105,7 +104,11 @@ def show_main_app():
     with c_set:
         st.subheader("2. Settings")
         service_tier = st.radio("Service Level:", 
-            [f"⚡ Standard (${COST_STANDARD})", f"🏺 Heirloom (${COST_HEIRLOOM})", f"🏛️ Civic (${COST_CIVIC})"],
+            [
+                f"⚡ Standard (${COST_STANDARD})", 
+                f"🏺 Heirloom (${COST_HEIRLOOM})", 
+                f"🏛️ Civic (${COST_CIVIC})"
+            ],
             key="tier_select"
         )
         is_heirloom = "Heirloom" in service_tier
@@ -132,9 +135,7 @@ def show_main_app():
         st.subheader("4. Payment")
         st.info(f"Total: **${final_price:.2f}**")
         
-        # Initialize link if needed
-        current_config = f"{service_tier}_{final_price}"
-        if "last_config" not in st.session_state or st.session_state.last_config != current_config:
+        if "stripe_url" not in st.session_state:
              url, session_id = payment_engine.create_checkout_session(
                 product_name=f"VerbaPost {service_tier}",
                 amount_in_cents=int(final_price * 100),
@@ -143,25 +144,14 @@ def show_main_app():
             )
              st.session_state.stripe_url = url
              st.session_state.stripe_session_id = session_id
-             st.session_state.last_config = current_config
+             st.session_state.last_config = f"{service_tier}_{final_price}"
         
         if st.session_state.stripe_url:
             st.link_button(f"💳 Pay ${final_price:.2f} & Unlock Recorder", st.session_state.stripe_url, type="primary")
             st.caption("Secure checkout via Stripe.")
             
-            # --- FIX: MANUAL CHECK LOGIC ---
-            if st.button("🔄 I've Paid (Check Now)"):
-                 # Force check against the stored session ID
-                 if "stripe_session_id" in st.session_state:
-                     is_paid = payment_engine.check_payment_status(st.session_state.stripe_session_id)
-                     if is_paid:
-                         st.session_state.payment_complete = True
-                         st.rerun()
-                     else:
-                         st.error("Stripe says: Payment pending or incomplete.")
-                 else:
-                     st.error("No payment session found. Please click Pay above.")
-
+            if st.button("🔄 I've Paid (Refresh Status)"):
+                 st.rerun()
         else:
             st.error("Connection Error. Please refresh.")
             
@@ -249,19 +239,16 @@ def show_main_app():
                 sig_path = "temp_signature.png"
                 img.save(sig_path)
 
-            # Create PDF
-            lang = st.session_state.get("language", "English")
             pdf_path = letter_format.create_pdf(
                 st.session_state.transcribed_text, 
                 f"{to_name}\n{to_street}\n{to_city}, {to_state} {to_zip}", 
                 f"{from_name}\n{from_street}\n{from_city}, {from_state} {from_zip}" if from_name else "", 
                 is_heirloom, 
-                lang, 
+                st.session_state.get("language", "English"),
                 "final_letter.pdf", 
                 sig_path
             )
             
-            # Auto-Send
             if not is_heirloom:
                 addr_to = {'name': to_name, 'street': to_street, 'city': to_city, 'state': to_state, 'zip': to_zip}
                 addr_from = {'name': from_name, 'street': from_street, 'city': from_city, 'state': from_state, 'zip': from_zip}
@@ -272,11 +259,11 @@ def show_main_app():
             
             st.write("✅ Done!")
 
-        st.balloons()
+        # No balloons! Just clean success.
         st.success("Letter Sent!")
         
         with open(pdf_path, "rb") as f:
-            st.download_button("📄 Download Copy", f, "letter.pdf", use_container_width=True)
+            st.download_button("📄 Download Receipt", f, "letter.pdf", use_container_width=True)
 
         if st.button("Start New"):
             reset_app()
