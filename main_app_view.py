@@ -14,7 +14,6 @@ import payment_engine
 
 # --- CONFIGURATION ---
 MAX_BYTES_THRESHOLD = 35 * 1024 * 1024 
-# YOUR APP URL
 YOUR_APP_URL = "https://verbapost.streamlit.app" 
 
 # --- PRICING ---
@@ -24,26 +23,24 @@ COST_CIVIC = 6.99
 COST_OVERAGE = 1.00
 
 def reset_app():
+    # Clear specific session keys but keep the address if possible? 
+    # For now, full reset to be safe.
     st.session_state.audio_path = None
     st.session_state.transcribed_text = ""
     st.session_state.app_mode = "recording"
     st.session_state.overage_agreed = False
     st.session_state.payment_complete = False
     st.query_params.clear()
-    if "stripe_url" in st.session_state:
-        del st.session_state.stripe_url
-    if "last_config" in st.session_state:
-        del st.session_state.last_config
     st.rerun()
 
 def show_main_app():
-    # --- 0. AUTO-DETECT RETURN FROM STRIPE ---
+    # --- AUTO-DETECT RETURN FROM STRIPE ---
     if "session_id" in st.query_params:
         session_id = st.query_params["session_id"]
         if payment_engine.check_payment_status(session_id):
             st.session_state.payment_complete = True
             st.toast("✅ Payment Confirmed! Recorder Unlocked.")
-            st.query_params.clear()
+            st.query_params.clear() 
         else:
             st.error("Payment verification failed.")
 
@@ -52,36 +49,29 @@ def show_main_app():
         st.session_state.app_mode = "recording"
     if "audio_path" not in st.session_state:
         st.session_state.audio_path = None
-    if "transcribed_text" not in st.session_state:
-        st.session_state.transcribed_text = ""
-    if "overage_agreed" not in st.session_state:
-        st.session_state.overage_agreed = False
     if "payment_complete" not in st.session_state:
         st.session_state.payment_complete = False
     
-    # --- SIDEBAR RESET ---
-    with st.sidebar:
-        st.subheader("Controls")
-        if st.button("🔄 Start New Letter", type="primary", use_container_width=True):
-            reset_app()
-
     # --- 1. ADDRESSING ---
     st.subheader("1. Addressing")
     col_to, col_from = st.tabs(["👉 Recipient", "👈 Sender"])
+
+    # ADDED KEYS TO PERSIST DATA
     with col_to:
-        to_name = st.text_input("Recipient Name", placeholder="John Doe")
-        to_street = st.text_input("Street Address", placeholder="123 Main St")
+        to_name = st.text_input("Recipient Name", placeholder="John Doe", key="to_name")
+        to_street = st.text_input("Street Address", placeholder="123 Main St", key="to_street")
         c1, c2 = st.columns(2)
-        to_city = c1.text_input("City", placeholder="Mt Juliet")
-        to_state = c2.text_input("State", max_chars=2, placeholder="TN")
-        to_zip = c2.text_input("Zip", max_chars=5, placeholder="37122")
+        to_city = c1.text_input("City", placeholder="Mt Juliet", key="to_city")
+        to_state = c2.text_input("State", max_chars=2, placeholder="TN", key="to_state")
+        to_zip = c2.text_input("Zip", max_chars=5, placeholder="37122", key="to_zip")
+
     with col_from:
-        from_name = st.text_input("Your Name")
-        from_street = st.text_input("Your Street")
-        from_city = st.text_input("Your City")
+        from_name = st.text_input("Your Name", key="from_name")
+        from_street = st.text_input("Your Street", key="from_street")
+        from_city = st.text_input("Your City", key="from_city")
         c3, c4 = st.columns(2)
-        from_state = c3.text_input("Your State", max_chars=2)
-        from_zip = c4.text_input("Your Zip", max_chars=5)
+        from_state = c3.text_input("Your State", max_chars=2, key="from_state")
+        from_zip = c4.text_input("Your Zip", max_chars=5, key="from_zip")
 
     if not (to_name and to_street and to_city and to_state and to_zip):
         st.info("👇 Fill out the **Recipient** tab to unlock the tools.")
@@ -96,7 +86,8 @@ def show_main_app():
     with c_set:
         st.subheader("2. Settings")
         service_tier = st.radio("Service Level:", 
-            [f"⚡ Standard (${COST_STANDARD})", f"🏺 Heirloom (${COST_HEIRLOOM})", f"🏛️ Civic (${COST_CIVIC})"]
+            [f"⚡ Standard (${COST_STANDARD})", f"🏺 Heirloom (${COST_HEIRLOOM})", f"🏛️ Civic (${COST_CIVIC})"],
+            key="service_tier_select"
         )
         is_heirloom = "Heirloom" in service_tier
         is_civic = "Civic" in service_tier
@@ -116,18 +107,14 @@ def show_main_app():
     final_price = price + (COST_OVERAGE if st.session_state.overage_agreed else 0.00)
 
     # ==================================================
-    #  PAYMENT GATE (One-Click Logic)
+    #  PAYMENT GATE
     # ==================================================
     if not st.session_state.payment_complete:
         st.subheader("4. Payment")
         st.info(f"Total: **${final_price:.2f}**")
         
-        # Check if we already generated a link for this specific price config
-        current_config = f"{service_tier}_{final_price}"
-        
-        # Only call API if we haven't already for this config
-        if "last_config" not in st.session_state or st.session_state.last_config != current_config:
-             # MATCHING ARGUMENTS EXACTLY HERE
+        if "stripe_url" not in st.session_state:
+             # IMPORTANT: Generate only when needed
              url, session_id = payment_engine.create_checkout_session(
                 product_name=f"VerbaPost {service_tier}",
                 amount_in_cents=int(final_price * 100),
@@ -136,22 +123,21 @@ def show_main_app():
             )
              st.session_state.stripe_url = url
              st.session_state.stripe_session_id = session_id
-             st.session_state.last_config = current_config
         
         if st.session_state.stripe_url:
             st.link_button(f"💳 Pay ${final_price:.2f} & Unlock Recorder", st.session_state.stripe_url, type="primary")
             st.caption("Secure checkout via Stripe.")
-        else:
-            st.error(f"Unable to connect to payment processor. {st.session_state.stripe_session_id}") # Show error msg
             
-        # Manual check button
-        if st.button("🔄 I've already paid (Refresh Status)"):
-            st.rerun()
+            # Manual Check Fallback (In case redirect opens new window and loses state)
+            if st.button("🔄 I've Paid (Refresh)"):
+                 st.rerun()
+        else:
+            st.error("Connection Error. Please refresh.")
             
         st.stop() 
 
     # ==================================================
-    #  STATE 1: RECORDING (Unlocked)
+    #  STATE 1: RECORDING
     # ==================================================
     if st.session_state.app_mode == "recording":
         st.subheader("🎙️ 5. Dictate")
@@ -179,7 +165,7 @@ def show_main_app():
                         st.rerun()
                     st.stop()
                 else:
-                    status.update(label="✅ Uploaded! Transcribing...", state="complete")
+                    status.update(label="✅ Uploaded! Starting Transcription...", state="complete")
                     st.session_state.app_mode = "transcribing"
                     st.rerun()
 
@@ -206,7 +192,7 @@ def show_main_app():
         st.audio(st.session_state.audio_path)
         edited_text = st.text_area("Edit Text:", value=st.session_state.transcribed_text, height=300)
         
-        c1, c2 = st.columns([1, 3])
+        c_ai, c_reset = st.columns([1, 3])
         if c1.button("✨ AI Polish"):
              st.session_state.transcribed_text = ai_engine.polish_text(edited_text)
              st.rerun()
