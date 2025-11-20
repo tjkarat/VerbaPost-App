@@ -23,8 +23,6 @@ COST_CIVIC = 6.99
 COST_OVERAGE = 1.00
 
 def reset_app():
-    # Clear specific session keys but keep the address if possible? 
-    # For now, full reset to be safe.
     st.session_state.audio_path = None
     st.session_state.transcribed_text = ""
     st.session_state.app_mode = "recording"
@@ -49,6 +47,10 @@ def show_main_app():
         st.session_state.app_mode = "recording"
     if "audio_path" not in st.session_state:
         st.session_state.audio_path = None
+    if "transcribed_text" not in st.session_state:
+        st.session_state.transcribed_text = ""
+    if "overage_agreed" not in st.session_state:
+        st.session_state.overage_agreed = False
     if "payment_complete" not in st.session_state:
         st.session_state.payment_complete = False
     
@@ -56,7 +58,6 @@ def show_main_app():
     st.subheader("1. Addressing")
     col_to, col_from = st.tabs(["👉 Recipient", "👈 Sender"])
 
-    # ADDED KEYS TO PERSIST DATA
     with col_to:
         to_name = st.text_input("Recipient Name", placeholder="John Doe", key="to_name")
         to_street = st.text_input("Street Address", placeholder="123 Main St", key="to_street")
@@ -87,7 +88,7 @@ def show_main_app():
         st.subheader("2. Settings")
         service_tier = st.radio("Service Level:", 
             [f"⚡ Standard (${COST_STANDARD})", f"🏺 Heirloom (${COST_HEIRLOOM})", f"🏛️ Civic (${COST_CIVIC})"],
-            key="service_tier_select"
+            key="tier_select"
         )
         is_heirloom = "Heirloom" in service_tier
         is_civic = "Civic" in service_tier
@@ -111,7 +112,7 @@ def show_main_app():
     # ==================================================
     if not st.session_state.payment_complete:
         st.subheader("4. Payment")
-        st.info(f"Total: **${final_price:.2f}**")
+        st.info(f"Please pay **${price}** to unlock the recorder.")
         
         if "stripe_url" not in st.session_state:
              # IMPORTANT: Generate only when needed
@@ -128,7 +129,6 @@ def show_main_app():
             st.link_button(f"💳 Pay ${final_price:.2f} & Unlock Recorder", st.session_state.stripe_url, type="primary")
             st.caption("Secure checkout via Stripe.")
             
-            # Manual Check Fallback (In case redirect opens new window and loses state)
             if st.button("🔄 I've Paid (Refresh)"):
                  st.rerun()
         else:
@@ -242,7 +242,7 @@ def show_main_app():
         st.success("Letter Sent!")
         
         with open(pdf_path, "rb") as f:
-            st.download_button("📄 Download Copy", f, "letter.pdf", use_container_width=True)
+            st.download_button("📄 Download Receipt", f, "letter.pdf", use_container_width=True)
 
         if st.button("Start New"):
             reset_app()
