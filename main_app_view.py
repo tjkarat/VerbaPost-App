@@ -3,7 +3,7 @@ from streamlit_drawable_canvas import st_canvas
 import os
 from PIL import Image
 from datetime import datetime
-import urllib.parse # <--- NEW IMPORT
+import urllib.parse
 
 # Import core logic
 import ai_engine
@@ -31,46 +31,42 @@ def validate_zip(zipcode, state):
     return True, "Valid"
 
 def reset_app():
-    st.session_state.audio_path = None
-    st.session_state.transcribed_text = ""
+    # NUCLEAR RESET: Clear EVERYTHING related to the previous letter
+    keys_to_wipe = [
+        "audio_path", 
+        "transcribed_text", 
+        "overage_agreed", 
+        "payment_complete", 
+        "stripe_url", 
+        "stripe_session_id", 
+        "last_config"
+    ]
+    for key in keys_to_wipe:
+        if key in st.session_state:
+            del st.session_state[key]
+            
     st.session_state.app_mode = "recording"
-    st.session_state.overage_agreed = False
-    st.session_state.payment_complete = False
     st.query_params.clear()
-    if "stripe_url" in st.session_state:
-        del st.session_state.stripe_url
-    if "last_config" in st.session_state:
-        del st.session_state.last_config
     st.rerun()
 
 def show_main_app():
-    # --- 0. AUTO-FILL FROM URL (THE FIX) ---
-    # If we return from Stripe, these params will exist
-    qp = st.query_params
-    
-    # Helper to get param or default
-    def get_param(key):
-        return qp.get(key, "")
-
-    # --- 1. PAYMENT VERIFICATION ---
-    if "session_id" in qp:
-        session_id = qp["session_id"]
+    # --- 0. AUTO-DETECT RETURN FROM STRIPE ---
+    if "session_id" in st.query_params:
+        session_id = st.query_params["session_id"]
+        # Verify the ID exists and hasn't been processed in this session yet
         if payment_engine.check_payment_status(session_id):
             st.session_state.payment_complete = True
             st.toast("✅ Payment Confirmed! Recorder Unlocked.")
-            # We DO NOT clear params yet, we need them to fill the boxes!
+            # Clear params immediately to prevent "Sticky" payment state on refresh
+            st.query_params.clear() 
         else:
-            st.error("Payment verification failed.")
+            st.error("Payment verification failed or session expired.")
 
     # --- INIT STATE ---
     if "app_mode" not in st.session_state:
         st.session_state.app_mode = "recording"
     if "audio_path" not in st.session_state:
         st.session_state.audio_path = None
-    if "transcribed_text" not in st.session_state:
-        st.session_state.transcribed_text = ""
-    if "overage_agreed" not in st.session_state:
-        st.session_state.overage_agreed = False
     if "payment_complete" not in st.session_state:
         st.session_state.payment_complete = False
     
@@ -84,24 +80,24 @@ def show_main_app():
     st.subheader("1. Addressing")
     col_to, col_from = st.tabs(["👉 Recipient", "👈 Sender"])
 
-    # PRE-FILL LOGIC: Use Session State -> OR URL Param -> OR Empty
-    # This priority ensures we don't overwrite user typing if they are editing
-    
+    # Data Persistence: We use get_param to check URL first, then session state
+    def get_val(key): return st.session_state.get(key, st.query_params.get(key, ""))
+
     with col_to:
-        to_name = st.text_input("Recipient Name", value=st.session_state.get("to_name", get_param("to_name")), key="to_name")
-        to_street = st.text_input("Street Address", value=st.session_state.get("to_street", get_param("to_street")), key="to_street")
+        to_name = st.text_input("Recipient Name", value=get_val("to_name"), key="to_name")
+        to_street = st.text_input("Street Address", value=get_val("to_street"), key="to_street")
         c1, c2 = st.columns(2)
-        to_city = c1.text_input("City", value=st.session_state.get("to_city", get_param("to_city")), key="to_city")
-        to_state = c2.text_input("State", value=st.session_state.get("to_state", get_param("to_state")), max_chars=2, key="to_state")
-        to_zip = c2.text_input("Zip", value=st.session_state.get("to_zip", get_param("to_zip")), max_chars=5, key="to_zip")
+        to_city = c1.text_input("City", value=get_val("to_city"), key="to_city")
+        to_state = c2.text_input("State", value=get_val("to_state"), max_chars=2, key="to_state")
+        to_zip = c2.text_input("Zip", value=get_val("to_zip"), max_chars=5, key="to_zip")
 
     with col_from:
-        from_name = st.text_input("Your Name", value=st.session_state.get("from_name", get_param("from_name")), key="from_name")
-        from_street = st.text_input("Your Street", value=st.session_state.get("from_street", get_param("from_street")), key="from_street")
-        from_city = st.text_input("Your City", value=st.session_state.get("from_city", get_param("from_city")), key="from_city")
+        from_name = st.text_input("Your Name", value=get_val("from_name"), key="from_name")
+        from_street = st.text_input("Your Street", value=get_val("from_street"), key="from_street")
+        from_city = st.text_input("Your City", value=get_val("from_city"), key="from_city")
         c3, c4 = st.columns(2)
-        from_state = c3.text_input("Your State", value=st.session_state.get("from_state", get_param("from_state")), max_chars=2, key="from_state")
-        from_zip = c4.text_input("Your Zip", value=st.session_state.get("from_zip", get_param("from_zip")), max_chars=5, key="from_zip")
+        from_state = c3.text_input("Your State", value=get_val("from_state"), max_chars=2, key="from_state")
+        from_zip = c4.text_input("Your Zip", value=get_val("from_zip"), max_chars=5, key="from_zip")
 
     if not (to_name and to_street and to_city and to_state and to_zip):
         st.info("👇 Fill out the **Recipient** tab to unlock the tools.")
@@ -143,19 +139,18 @@ def show_main_app():
         st.subheader("4. Payment")
         st.info(f"Total: **${final_price:.2f}**")
         
-        # BUILD RETURN URL WITH DATA
-        # We encode the address data into the URL parameters
+        # Build URL params to persist data across redirect
         params = {
             "to_name": to_name, "to_street": to_street, "to_city": to_city, "to_state": to_state, "to_zip": to_zip,
             "from_name": from_name, "from_street": from_street, "from_city": from_city, "from_state": from_state, "from_zip": from_zip
         }
         query_string = urllib.parse.urlencode(params)
-        # Stripe will append &session_id=... to this
         success_link = f"{YOUR_APP_URL}?{query_string}"
 
-        # Initialize link if needed
+        # Force fresh link generation if tier changes or link is missing
         current_config = f"{service_tier}_{final_price}"
-        if "last_config" not in st.session_state or st.session_state.last_config != current_config:
+        
+        if "stripe_url" not in st.session_state or st.session_state.get("last_config") != current_config:
              url, session_id = payment_engine.create_checkout_session(
                 product_name=f"VerbaPost {service_tier}",
                 amount_in_cents=int(final_price * 100),
@@ -167,19 +162,19 @@ def show_main_app():
              st.session_state.last_config = current_config
         
         if st.session_state.stripe_url:
+            # THE ONE BUTTON
             st.link_button(f"💳 Pay ${final_price:.2f} & Unlock Recorder", st.session_state.stripe_url, type="primary")
             st.caption("Secure checkout via Stripe.")
             
-            if st.button("🔄 I've Paid (Refresh Status)"):
-                 # Manual check logic
-                 if "stripe_session_id" in st.session_state:
-                     if payment_engine.check_payment_status(st.session_state.stripe_session_id):
-                         st.session_state.payment_complete = True
-                         st.rerun()
-                     else:
-                         st.error("Payment not confirmed yet.")
+            # Manual check 
+            if st.button("🔄 Check Status (If not redirected)"):
+                 if payment_engine.check_payment_status(st.session_state.stripe_session_id):
+                     st.session_state.payment_complete = True
+                     st.rerun()
+                 else:
+                     st.error("Payment not found. Please pay first.")
         else:
-            st.error("Connection Error.")
+            st.error("Connection Error. Please refresh.")
             
         st.stop() 
 
@@ -239,7 +234,7 @@ def show_main_app():
         st.audio(st.session_state.audio_path)
         edited_text = st.text_area("Edit Text:", value=st.session_state.transcribed_text, height=300)
         
-        c_ai, c_reset = st.columns([1, 3])
+        c1, c2 = st.columns([1, 3])
         if c1.button("✨ AI Polish"):
              st.session_state.transcribed_text = ai_engine.polish_text(edited_text)
              st.rerun()
@@ -248,48 +243,4 @@ def show_main_app():
              st.rerun()
 
         st.markdown("---")
-        if st.button("🚀 Approve & Send Now", type="primary", use_container_width=True):
-            st.session_state.transcribed_text = edited_text
-            st.session_state.app_mode = "finalizing"
-            st.rerun()
-
-    # ==================================================
-    #  STATE 3: FINALIZING
-    # ==================================================
-    elif st.session_state.app_mode == "finalizing":
-        st.divider()
-        with st.status("✉️ Sending...", expanded=True):
-            sig_path = None
-            if canvas_result.image_data is not None:
-                img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
-                sig_path = "temp_signature.png"
-                img.save(sig_path)
-
-            pdf_path = letter_format.create_pdf(
-                st.session_state.transcribed_text, 
-                f"{to_name}\n{to_street}\n{to_city}, {to_state} {to_zip}", 
-                f"{from_name}\n{from_street}\n{from_city}, {from_state} {from_zip}" if from_name else "", 
-                is_heirloom, 
-                st.session_state.get("language", "English"),
-                "final_letter.pdf", 
-                sig_path
-            )
-            
-            if not is_heirloom:
-                addr_to = {'name': to_name, 'street': to_street, 'city': to_city, 'state': to_state, 'zip': to_zip}
-                addr_from = {'name': from_name, 'street': from_street, 'city': from_city, 'state': from_state, 'zip': from_zip}
-                st.write("🚀 Transmitting to Lob...")
-                mailer.send_letter(pdf_path, addr_to, addr_from)
-            else:
-                st.info("🏺 Added to Heirloom Queue")
-            
-            st.write("✅ Done!")
-
-        st.balloons()
-        st.success("Letter Sent!")
-        
-        with open(pdf_path, "rb") as f:
-            st.download_button("📄 Download Receipt", f, "letter.pdf", use_container_width=True)
-
-        if st.button("Start New"):
-            reset_app()
+        if st.button("🚀 Approve & Send Now", type="primary", use_container_width=True
