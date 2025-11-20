@@ -1,4 +1,3 @@
-cat <<EOF > main_app_view.py
 import streamlit as st
 from streamlit_drawable_canvas import st_canvas
 import os
@@ -100,7 +99,7 @@ def show_main_app():
 
     # Validation Logic
     service_tier = st.radio("Service Level:", 
-        [f"⚡ Standard (\${COST_STANDARD})", f"🏺 Heirloom (\${COST_HEIRLOOM})", f"🏛️ Civic (\${COST_CIVIC})"],
+        [f"⚡ Standard (${COST_STANDARD})", f"🏺 Heirloom (${COST_HEIRLOOM})", f"🏛️ Civic (${COST_CIVIC})"],
         key="tier_select"
     )
     is_heirloom = "Heirloom" in service_tier
@@ -140,7 +139,7 @@ def show_main_app():
     # ==================================================
     if not st.session_state.payment_complete:
         st.subheader("4. Payment")
-        st.info(f"Total: **\${final_price:.2f}**")
+        st.info(f"Total: **${final_price:.2f}**")
         
         params = {
             "to_name": to_name, "to_street": to_street, "to_city": to_city, "to_state": to_state, "to_zip": to_zip,
@@ -162,7 +161,7 @@ def show_main_app():
              st.session_state.last_config = current_config
         
         if st.session_state.stripe_url:
-            st.link_button(f"💳 Pay \${final_price:.2f} & Unlock Recorder", st.session_state.stripe_url, type="primary")
+            st.link_button(f"💳 Pay ${final_price:.2f} & Unlock Recorder", st.session_state.stripe_url, type="primary")
             st.caption("Secure checkout via Stripe.")
             
             if st.button("🔄 I've Paid (Refresh Status)"):
@@ -195,7 +194,7 @@ def show_main_app():
                 if file_size > MAX_BYTES_THRESHOLD:
                     status.update(label="⚠️ Recording too long!", state="error")
                     st.error("Recording exceeds 3 minutes.")
-                    if st.button(f"💳 Agree to +\${COST_OVERAGE} Charge"):
+                    if st.button(f"💳 Agree to +${COST_OVERAGE} Charge"):
                         st.session_state.overage_agreed = True
                         st.session_state.app_mode = "transcribing"
                         st.rerun()
@@ -331,4 +330,3 @@ def show_main_app():
 
         if st.button("Start New"):
             reset_app()
-EOF
