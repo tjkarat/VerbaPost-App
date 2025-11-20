@@ -12,16 +12,16 @@ def get_reps(address):
         st.error("❌ Configuration Error: Google Civic API Key is missing in Secrets.")
         return []
 
-    url = "https://www.googleapis.com/civicinfo/v2/representatives"
+    # FIX: Updated URL to the correct endpoint
+    url = "https://civicinfo.googleapis.com/civicinfo/v2/representatives"
+    
     params = {
         'key': API_KEY,
         'address': address,
+        # We need specific roles to filter out local dog catchers
         'levels': 'country',
         'roles': ['legislatorUpperBody', 'legislatorLowerBody']
     }
-
-    # DEBUG: Show what we are sending
-    # st.caption(f"🔍 Asking Google about: {address}")
 
     try:
         r = requests.get(url, params=params)
@@ -31,19 +31,13 @@ def get_reps(address):
         if "error" in data:
             err_msg = data['error'].get('message', 'Unknown Error')
             st.error(f"❌ Google API Error: {err_msg}")
-            
-            if "API key not valid" in err_msg:
-                st.info("Check your API Key in .streamlit/secrets.toml")
-            if "not enabled" in err_msg:
-                st.info("👉 You must click 'ENABLE' on the Civic Information API in Google Cloud Console.")
-            
             return []
 
         targets = []
         
         # Case 2: Success?
         if 'offices' not in data:
-            st.warning(f"⚠️ Google found the address, but no representatives were listed.")
+            st.warning(f"⚠️ No representatives found for this address.")
             return []
 
         for office in data.get('offices', []):
@@ -56,7 +50,7 @@ def get_reps(address):
                     # Handle Address format
                     addr_list = official.get('address', [])
                     if not addr_list:
-                        # Fallback for officials with hidden addresses
+                        # Fallback for officials with hidden addresses (Use Capitol Hill)
                         clean_address = {
                             'name': official['name'],
                             'street': 'United States Capitol',
@@ -81,7 +75,7 @@ def get_reps(address):
                     })
         
         if len(targets) == 0:
-             st.warning("⚠️ Found valid data, but no Senators or Reps in the list.")
+             st.warning("⚠️ Found data, but no Senators/Reps matched our filter.")
              
         return targets
 
