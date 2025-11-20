@@ -1,3 +1,4 @@
+cat <<EOF > splash_view.py
 import streamlit as st
 
 def show_splash():
@@ -8,8 +9,14 @@ def show_splash():
 
     # --- HERO ---
     st.title("VerbaPost 📮")
-    st.subheader("The Authenticity Engine.")
-    st.markdown("##### Don't just send a text. Send a legacy.")
+    
+    # The New Copy
+    st.markdown(
+        """
+        ### Texts are trivial. Emails are ignored.
+        # Real letters get read.
+        """
+    )
     
     st.divider()
 
@@ -57,3 +64,4 @@ def show_splash():
             st.rerun()
 
     st.markdown("<div style='text-align: center'><a href='#'>Already have an account? Log In</a></div>", unsafe_allow_html=True)
+EOF
