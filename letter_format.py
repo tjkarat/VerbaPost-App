@@ -4,8 +4,7 @@ import os
 def create_pdf(text_content, recipient_info, return_address_info, is_heirloom, language="English", filename="output_letter.pdf", signature_path="temp_signature.png"):
     print(f"📄 Formatting PDF in {language}...")
     
-    # A4 is safer for Lob globally, but Letter is standard US. 
-    # We use 'Letter' (215.9 mm x 279.4 mm)
+    # Setup PDF (Standard US Letter)
     pdf = FPDF(orientation='P', unit='mm', format='Letter')
     pdf.add_page()
     
@@ -24,7 +23,9 @@ def create_pdf(text_content, recipient_info, return_address_info, is_heirloom, l
 
     # --- LAYOUT LOGIC ---
     if is_heirloom:
-        # HEIRLOOM: Needs addresses printed so YOU can see them to hand-write the envelope
+        # HEIRLOOM: Manual Fulfillment
+        # Print everything normally since you are mailing it.
+        
         # 1. Return Address (Top Left)
         pdf.set_font("Helvetica", size=10)
         pdf.set_xy(10, 10)
@@ -40,11 +41,11 @@ def create_pdf(text_content, recipient_info, return_address_info, is_heirloom, l
         pdf.set_y(80)
         
     else:
-        # STANDARD (LOB): 
-        # Lob prints the address on a separate page 1.
-        # We just want the letter content to start comfortably at the top of Page 2.
-        # Standard margin is 10mm, let's give it 20mm to look nice.
-        pdf.set_y(20)
+        # STANDARD (LOB): Automated Fulfillment
+        # Lob needs the top 4 inches (approx 100mm) CLEAN for the address block.
+        # We push the text start position down to 110mm to be safe.
+        
+        pdf.set_y(110) # <--- THE FIX (Moves text below the barcode area)
 
     # --- BODY TEXT ---
     body_size = 16 if language in ["Chinese", "Japanese"] else 14
@@ -55,14 +56,16 @@ def create_pdf(text_content, recipient_info, return_address_info, is_heirloom, l
     pdf.ln(10)
     if os.path.exists(signature_path):
         try:
-            # Use current X, auto Y
+            # Ensure signature fits on page
+            if pdf.get_y() > 250: pdf.add_page()
             pdf.image(signature_path, w=40) 
         except:
             pass
     
     # --- FOOTER ---
     if not is_heirloom:
-        pdf.set_y(-20)
+        # Ensure footer is at bottom of current page
+        pdf.set_y(-20) 
         pdf.set_font("Helvetica", 'I', 9)
         pdf.cell(0, 10, "Dictated via verbapost.com", ln=1, align='C')
     
