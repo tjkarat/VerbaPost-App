@@ -1,10 +1,16 @@
-cat <<EOF > splash_view.py
 import streamlit as st
 
 # Version 3.0 - Final HTML Grid
 def show_splash():
+    # --- CONFIG ---
+    P_STANDARD = "$2.99"
+    P_HEIRLOOM = "$5.99"
+    P_CIVIC = "$6.99"
+
+    # --- HERO ---
     st.title("VerbaPost 📮")
     st.subheader("The Authenticity Engine.")
+    # The New Tagline
     st.markdown("##### Texts are trivial. Emails are ignored. Real letters get read.")
     
     st.divider()
@@ -17,7 +23,7 @@ def show_splash():
         st.caption("Tap the mic. AI handles the typing.")
     with c2:
         st.markdown("✍️ **2. Sign**")
-        st.caption("Sign your name on screen.")
+        st.caption("Review the text, sign your name on screen.")
     with c3:
         st.markdown("📮 **3. We Mail**")
         st.caption("We print, stamp, and mail it.")
