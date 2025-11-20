@@ -10,38 +10,36 @@ except:
     LOB_AVAILABLE = False
     LOB_API_KEY = ""
 
-def send_letter(pdf_path):
+def send_letter(pdf_path, to_addr, from_addr):
     """
-    Uploads the PDF to Lob using direct API calls (No library required).
+    Uploads PDF to Lob. 
+    to_addr and from_addr are dictionaries: {name, street, city, state, zip}
     """
     if not LOB_AVAILABLE:
         print("⚠️ Simulation: Mail sent (No Lob API Key).")
         return True
 
-    print(f"📮 Sending to Lob (Direct API): {os.path.basename(pdf_path)}")
+    print(f"📮 Sending to Lob: {os.path.basename(pdf_path)}")
     
     url = "https://api.lob.com/v1/letters"
     
     try:
         with open(pdf_path, 'rb') as file:
-            # Define the letter data
-            # In Day 4, we will make these addresses dynamic variables!
             payload = {
                 "description": "VerbaPost Letter",
-                "to[name]": "VerbaPost User",
-                "to[address_line1]": "185 Berry St",
-                "to[address_city]": "San Francisco",
-                "to[address_state]": "CA",
-                "to[address_zip]": "94107",
-                "from[name]": "Tarak Robbana",
-                "from[address_line1]": "1008 Brandon Court",
-                "from[address_city]": "Mt Juliet",
-                "from[address_state]": "TN",
-                "from[address_zip]": "37122",
+                "to[name]": to_addr['name'],
+                "to[address_line1]": to_addr['street'],
+                "to[address_city]": to_addr['city'],
+                "to[address_state]": to_addr['state'],
+                "to[address_zip]": to_addr['zip'],
+                "from[name]": from_addr['name'],
+                "from[address_line1]": from_addr['street'],
+                "from[address_city]": from_addr['city'],
+                "from[address_state]": from_addr['state'],
+                "from[address_zip]": from_addr['zip'],
                 "color": "false"
             }
             
-            # Send the request with Basic Auth (Key is username, password is blank)
             response = requests.post(
                 url, 
                 auth=(LOB_API_KEY, ''), 
@@ -50,12 +48,12 @@ def send_letter(pdf_path):
             )
             
             if response.status_code == 200:
+                st.toast(f"✅ Lob ID: {response.json()['id']}")
                 print(f"✅ Lob Success: {response.json()['id']}")
                 return True
             else:
                 error_msg = response.json().get('error', {}).get('message', 'Unknown Error')
-                print(f"❌ Lob Error: {error_msg}")
-                st.error(f"Mailing Failed: {error_msg}")
+                st.error(f"Lob Error: {error_msg}")
                 return False
 
     except Exception as e:

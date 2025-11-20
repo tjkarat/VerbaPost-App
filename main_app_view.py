@@ -15,7 +15,7 @@ import payment_engine
 # --- CONFIGURATION ---
 MAX_BYTES_THRESHOLD = 35 * 1024 * 1024 
 
-# --- PRICING ENGINE ---
+# --- PRICING ---
 COST_STANDARD = 2.99
 COST_HEIRLOOM = 5.99
 COST_CIVIC = 6.99
@@ -160,91 +160,3 @@ def show_main_app():
         with c_ai:
             if st.button("✨ AI Polish"):
                 polished = ai_engine.polish_text(edited_text)
-                st.session_state.transcribed_text = polished
-                st.rerun()
-        with c_reset:
-            if st.button("🗑️ Trash & Retry"):
-                reset_app()
-
-        st.markdown("---")
-        if st.button("🚀 Approve & Generate PDF", type="primary", use_container_width=True):
-            st.session_state.transcribed_text = edited_text
-            st.session_state.app_mode = "finalizing"
-            st.rerun()
-
-    # ==================================================
-    #  STATE 3: PAYMENT & FINALIZING
-    # ==================================================
-    elif st.session_state.app_mode == "finalizing":
-        st.divider()
-        st.subheader("💰 Checkout")
-
-        if is_heirloom:
-            base_price = COST_HEIRLOOM
-        elif is_civic:
-            base_price = COST_CIVIC
-        else:
-            base_price = COST_STANDARD
-
-        final_price = base_price + (COST_OVERAGE if st.session_state.overage_agreed else 0.00)
-        
-        st.info(f"Total: ${final_price:.2f}")
-
-        if not st.session_state.payment_complete:
-            checkout_url = payment_engine.create_checkout_session(
-                product_name=f"VerbaPost {service_tier}",
-                amount_in_cents=int(final_price * 100),
-                success_url="https://google.com", 
-                cancel_url="https://google.com"
-            )
-            
-            if "Error" in checkout_url:
-                st.error("⚠️ Stripe Error: Keys not found.")
-            else:
-                st.link_button(f"💳 Pay ${final_price:.2f}", checkout_url)
-                st.markdown("---")
-                st.caption("Use Stripe Test Card: 4242 4242 4242 4242")
-                if st.button("✅ I Have Paid"):
-                    st.session_state.payment_complete = True
-                    st.rerun()
-
-        else:
-            with st.status("✉️ Processing...", expanded=True):
-                full_recipient = f"{to_name}\n{to_street}\n{to_city}, {to_state} {to_zip}"
-                full_return = f"{from_name}\n{from_street}\n{from_city}, {from_state} {from_zip}" if from_name else ""
-
-                # --- SAVE TO DATABASE ---
-                if not os.path.exists("verbapost.db"): 
-                    database.init_db()
-                
-                sender_name = from_name if from_name else "Guest"
-                database.create_letter(st.session_state.transcribed_text, sender_name)
-                st.write("✅ Saved to Database")
-
-                # --- HANDLE SIGNATURE ---
-                sig_path = None
-                if canvas_result.image_data is not None:
-                    img = Image.fromarray(canvas_result.image_data.astype('uint8'), 'RGBA')
-                    sig_path = "temp_signature.png"
-                    img.save(sig_path)
-
-                # --- CREATE PDF ---
-                pdf_path = letter_format.create_pdf(
-                    st.session_state.transcribed_text, full_recipient, full_return, is_heirloom, "final_letter.pdf", sig_path
-                )
-                
-                st.write("✅ PDF Generated")
-                
-                st.write("✅ Done!")
-
-            st.balloons()
-            st.success("Order Complete!")
-            
-            safe_name = "".join(x for x in to_name if x.isalnum())
-            unique_name = f"Letter_{safe_name}_{datetime.now().strftime('%H%M')}.pdf"
-
-            with open(pdf_path, "rb") as pdf_file:
-                st.download_button("📄 Download Receipt", pdf_file, unique_name, "application/pdf", use_container_width=True)
-
-            if st.button("Start New Letter"):
-                reset_app()
