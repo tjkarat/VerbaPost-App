@@ -1,5 +1,6 @@
 import streamlit as st
 
+# Version 2.0 - Force Pricing Update
 def show_splash():
     # --- CONFIG ---
     P_STANDARD = ".99"
@@ -9,7 +10,6 @@ def show_splash():
     # --- HERO ---
     st.title("VerbaPost 📮")
     
-    # The New Tagline
     st.markdown(
         """
         ### Texts are trivial. Emails are ignored.
