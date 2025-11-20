@@ -10,3 +10,5 @@ zipcodes
 stripe
 psycopg2-binary
 supabase
+lob-python
+lob-python

@@ -1,55 +1,59 @@
 import streamlit as st
 
 def show_splash():
-    # --- PRICING CONSTANTS ---
-    P_STANDARD = ".99"
-    P_HEIRLOOM = ".99"
-    P_CIVIC = ".99"
+    # --- CONFIG ---
+    P_STANDARD = "$2.99"
+    P_HEIRLOOM = "$5.99"
+    P_CIVIC = "$6.99"
 
+    # --- HERO ---
     st.title("VerbaPost 📮")
     st.subheader("The Authenticity Engine.")
-    st.markdown(
-        """
-        **Don't just send a text. Send a legacy.**
-        
-        VerbaPost turns your spoken voice into a physical, mailed letter. 
-        """
-    )
+    st.markdown("##### Don't just send a text. Send a legacy.")
     
     st.divider()
 
-    # --- Feature Breakdown (Columns) ---
+    # --- HOW IT WORKS (New Section) ---
+    st.subheader("How it Works")
+    step1, step2, step3 = st.columns(3)
+    
+    with step1:
+        st.markdown("### 🎙️ 1. Dictate")
+        st.write("Tap the mic and speak your mind. Our AI transcribes and polishes your message.")
+    
+    with step2:
+        st.markdown("### ✍️ 2. Sign")
+        st.write("Review the text, sign your name on the screen, and choose your style.")
+    
+    with step3:
+        st.markdown("### 📮 3. We Mail")
+        st.write("We print, fold, stamp, and mail a physical letter to your recipient.")
+
+    st.divider()
+
+    # --- PRICING TIERS ---
+    st.subheader("Simple Pricing")
     c1, c2, c3 = st.columns(3)
     
     with c1:
-        st.markdown("### ⚡ Standard")
-        st.caption(f"**{P_STANDARD} / letter**")
-        st.write("API Fulfillment")
-        st.write("Window Envelope")
-        st.write("Mailed in 24hrs")
+        st.info(f"**Standard**\n\n# {P_STANDARD}")
+        st.caption("API Fulfillment • Window Envelope • Mailed via Lob")
 
     with c2:
-        st.markdown("### 🏺 Heirloom")
-        st.caption(f"**{P_HEIRLOOM} / letter**")
-        st.write("Hand-stamped")
-        st.write("Premium Paper")
-        st.write("Mailed from Nashville, TN")
+        st.success(f"**Heirloom**\n\n# {P_HEIRLOOM}")
+        st.caption("Hand-Stamped • Premium Paper • Mailed from Nashville, TN")
 
     with c3:
-        st.markdown("### 🏛️ Civic")
-        st.caption(f"**{P_CIVIC} / blast**")
-        st.write("Mail your Senators")
-        st.write("Auto-lookup")
-        st.write("(Coming Soon)")
+        st.warning(f"**Civic Blast**\n\n# {P_CIVIC}")
+        st.caption("Activism Mode • Auto-Find Reps • Mails Senate + House")
 
     st.divider()
 
-    # --- Call to Action ---
-    # KEY ARGUMENT ADDED to prevent duplicate ID error
-    if st.button("🚀 Start Writing Now", type="primary", use_container_width=True, key="splash_start"):
-        st.session_state.current_view = "login"
-        st.rerun()
+    # --- CTA ---
+    col_spacer, col_btn, col_spacer2 = st.columns([1, 2, 1])
+    with col_btn:
+        if st.button("🚀 Start Writing Now", type="primary", use_container_width=True):
+            st.session_state.current_view = "main_app"
+            st.rerun()
 
-    if st.button("Already a member? Log In", key="splash_login"):
-        st.session_state.current_view = "login"
-        st.rerun()
+    st.markdown("<div style='text-align: center'><a href='#'>Already have an account? Log In</a></div>", unsafe_allow_html=True)
