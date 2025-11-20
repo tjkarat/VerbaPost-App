@@ -47,7 +47,6 @@ def show_main_app():
     # --- 0. AUTO-DETECT RETURN FROM STRIPE ---
     if "session_id" in st.query_params:
         session_id = st.query_params["session_id"]
-        # Verify the ID exists and hasn't been processed in this session yet
         if payment_engine.check_payment_status(session_id):
             st.session_state.payment_complete = True
             st.toast("✅ Payment Confirmed! Recorder Unlocked.")
@@ -88,6 +87,7 @@ def show_main_app():
         to_zip = c2.text_input("Zip", value=get_val("to_zip"), max_chars=5, key="to_zip")
 
     with col_from:
+        # The 'value' here will now be auto-filled if the user logged in!
         from_name = st.text_input("Your Name", value=get_val("from_name"), key="from_name")
         from_street = st.text_input("Your Street", value=get_val("from_street"), key="from_street")
         from_city = st.text_input("Your City", value=get_val("from_city"), key="from_city")
@@ -135,7 +135,7 @@ def show_main_app():
         st.subheader("4. Payment")
         st.info(f"Total: **${final_price:.2f}**")
         
-        # Build URL params to persist data across redirect
+        # Build URL params
         params = {
             "to_name": to_name, "to_street": to_street, "to_city": to_city, "to_state": to_state, "to_zip": to_zip,
             "from_name": from_name, "from_street": from_street, "from_city": from_city, "from_state": from_state, "from_zip": from_zip
@@ -143,7 +143,6 @@ def show_main_app():
         query_string = urllib.parse.urlencode(params)
         success_link = f"{YOUR_APP_URL}?{query_string}"
 
-        # Force fresh link generation
         current_config = f"{service_tier}_{final_price}"
         if "stripe_url" not in st.session_state or st.session_state.get("last_config") != current_config:
              url, session_id = payment_engine.create_checkout_session(
@@ -168,7 +167,6 @@ def show_main_app():
                      st.error("Payment not found. Please pay first.")
         else:
             st.error("Connection Error. Please refresh.")
-            
         st.stop() 
 
     # ==================================================
@@ -177,7 +175,6 @@ def show_main_app():
     if st.session_state.app_mode == "recording":
         st.subheader("🎙️ 5. Dictate")
         st.success("🔓 Payment Verified.")
-        
         audio_value = st.audio_input("Record your letter")
 
         if audio_value:
@@ -226,15 +223,13 @@ def show_main_app():
         st.subheader("📝 Review")
         st.audio(st.session_state.audio_path)
         edited_text = st.text_area("Edit Text:", value=st.session_state.transcribed_text, height=300)
-        
-        c_ai, c_reset = st.columns([1, 3])
+        c1, c2 = st.columns([1, 3])
         if c1.button("✨ AI Polish"):
              st.session_state.transcribed_text = ai_engine.polish_text(edited_text)
              st.rerun()
         if c2.button("🗑️ Re-Record (Free)"):
              st.session_state.app_mode = "recording"
              st.rerun()
-
         st.markdown("---")
         if st.button("🚀 Approve & Send Now", type="primary", use_container_width=True):
             st.session_state.transcribed_text = edited_text
@@ -270,9 +265,19 @@ def show_main_app():
                 mailer.send_letter(pdf_path, addr_to, addr_from)
             else:
                 st.info("🏺 Added to Heirloom Queue")
-            
+
+            # --- AUTO-SAVE USER ADDRESS (THE MEMORY HOOK) ---
+            if st.session_state.get("user"):
+                try:
+                    user_email = st.session_state.user.user.email
+                    database.update_user_address(user_email, from_name, from_street, from_city, from_state, from_zip)
+                    st.caption("💾 Return Address Saved to Profile")
+                except Exception as e:
+                    print(f"Save failed: {e}")
+
             st.write("✅ Done!")
 
+        st.balloons()
         st.success("Letter Sent!")
         
         with open(pdf_path, "rb") as f:

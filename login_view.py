@@ -21,10 +21,18 @@ def show_login():
                     if error:
                         st.error(f"Failed: {error}")
                     else:
-                        st.success("Success!")
-                        # Save critical user info to session
+                        st.success("Welcome back!")
                         st.session_state.user = user
-                        st.session_state.user_email = email # Easier access
+                        
+                        # --- MAGIC: LOAD SAVED ADDRESS ---
+                        saved_addr = auth_engine.get_current_address(email)
+                        if saved_addr:
+                            st.session_state["from_name"] = saved_addr.get("name", "")
+                            st.session_state["from_street"] = saved_addr.get("street", "")
+                            st.session_state["from_city"] = saved_addr.get("city", "")
+                            st.session_state["from_state"] = saved_addr.get("state", "")
+                            st.session_state["from_zip"] = saved_addr.get("zip", "")
+                        
                         st.session_state.current_view = "main_app"
                         st.rerun()
 
@@ -41,7 +49,6 @@ def show_login():
                     else:
                         st.success("Account created! You are logged in.")
                         st.session_state.user = user
-                        st.session_state.user_email = new_email
                         st.session_state.current_view = "main_app"
                         st.rerun()
         
