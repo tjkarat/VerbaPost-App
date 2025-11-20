@@ -5,48 +5,39 @@ from main_app_view import show_main_app
 # --- PAGE CONFIG ---
 st.set_page_config(page_title="VerbaPost", page_icon="📮", layout="centered")
 
-# --- CSS INJECTOR (Removes Streamlit Branding) ---
+# --- CSS INJECTOR ---
 def inject_custom_css():
     st.markdown("""
         <style>
-        /* 1. Hide Streamlit Branding */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         header {visibility: hidden;}
-        
-        /* 2. Remove Top Padding (The Forehead) */
-        .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 1rem !important;
-        }
-        
-        /* 3. Button Styling */
-        div.stButton > button {
-            border-radius: 8px;
-            font-weight: 600;
-            border: 1px solid #e0e0e0;
-        }
-        
-        /* 4. Input Field Styling */
-        input {
-            border-radius: 5px !important;
-        }
+        .block-container {padding-top: 1rem !important; padding-bottom: 1rem !important;}
+        div.stButton > button {border-radius: 8px; font-weight: 600; border: 1px solid #e0e0e0;}
+        input {border-radius: 5px !important;}
         </style>
         """, unsafe_allow_html=True)
 
-# Apply the styling immediately
 inject_custom_css()
 
-# --- NAVIGATION STATE ---
+# --- ROUTING LOGIC (THE FIX) ---
+# Check if returning from Stripe
+if "session_id" in st.query_params:
+    # Force view to main app so we don't get stuck on Splash
+    st.session_state.current_view = "main_app"
+
+# Default State
 if "current_view" not in st.session_state:
     st.session_state.current_view = "splash" 
+if "user" not in st.session_state:
+    st.session_state.user = None
 
 # --- ROUTER ---
 if st.session_state.current_view == "splash":
     show_splash()
 
 elif st.session_state.current_view == "main_app":
-    # Custom Sidebar Navigation
+    # Sidebar
     with st.sidebar:
         st.subheader("Navigation")
         if st.button("🏠 Home", use_container_width=True):
