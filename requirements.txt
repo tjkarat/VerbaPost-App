@@ -1,4 +1,4 @@
-streamlit
+streamlit>=1.40.0
 audio-recorder-streamlit
 streamlit-drawable-canvas
 openai-whisper
@@ -9,6 +9,4 @@ numpy
 zipcodes
 stripe
 psycopg2-binary
-supabase
-lob-python
 lob-python
