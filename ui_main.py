@@ -322,4 +322,4 @@ def show_main_app():
                 except: pass
 
         if st.button("Start New"):
-            reset_app()
+            reset_app()# Force Sync
