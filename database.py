@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Text
-from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker, joinedload # <--- NEW IMPORT
 from datetime import datetime
 import streamlit as st
 from sqlalchemy.engine import Engine
@@ -31,7 +31,7 @@ class Letter(Base):
     __tablename__ = 'letters'
     id = Column(Integer, primary_key=True)
     content = Column(Text, nullable=True)
-    status = Column(String, default="Draft") # Draft, Paid, Sent
+    status = Column(String, default="Draft") 
     created_at = Column(DateTime, default=datetime.utcnow)
     
     recipient_name = Column(String, nullable=True)
@@ -117,15 +117,18 @@ def get_letter(letter_id):
     session.close()
     return letter
 
-# --- ADMIN FUNCTIONS (NEW) ---
+# --- ADMIN FUNCTIONS (FIXED) ---
 def get_pending_heirloom_letters():
     session = get_session()
-    # We assume status='Heirloom_Paid' or just filter by logic in the view
-    # For MVP, let's grab ALL letters that aren't 'Draft' or 'Sent'
-    # Ideally, we'd have a specific status. Let's grab last 50 for now.
-    letters = session.query(Letter).order_by(Letter.created_at.desc()).limit(50).all()
-    session.close()
-    return letters
+    try:
+        # Eager load the 'author' relationship so it's available after session closes
+        letters = session.query(Letter).options(joinedload(Letter.author)).order_by(Letter.created_at.desc()).limit(50).all()
+        
+        # Detach objects from session so they can be used in Streamlit UI safely
+        session.expunge_all()
+        return letters
+    finally:
+        session.close()
 
 def mark_as_sent(letter_id):
     session = get_session()
