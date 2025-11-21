@@ -15,10 +15,10 @@ def get_reps(address):
     # Geocodio Endpoint
     url = "https://api.geocod.io/v1.7/geocode"
     
-    # We ask for 'congress' fields to get federal reps
+    # FIX: Changed 'congress' to 'cd' (Congressional District) which is the standard field
     params = {
         'q': address,
-        'fields': 'congress',
+        'fields': 'cd',
         'api_key': API_KEY
     }
 
@@ -32,52 +32,52 @@ def get_reps(address):
             st.error(f"❌ Geocodio Error: {data['error']}")
             return []
 
-        # Geocodio returns a list of results (we take the first/best match)
         if not data.get('results'):
-            st.warning("⚠️ Address not found in database.")
+            st.warning("⚠️ Address not found.")
             return []
 
+        # Get the first result (best match)
         result = data['results'][0]
         
         targets = []
         
-        # Parse Congress Data
-        congress_data = result.get('fields', {}).get('congressional_districts', [])
+        # Parse Congressional Data
+        districts = result.get('fields', {}).get('congressional_districts', [])
         
-        for district in congress_data:
-            # Geocodio returns "current_legislators" list for each district
+        for district in districts:
             legislators = district.get('current_legislators', [])
             
             for leg in legislators:
-                # Filter for Senator and Representative
                 role = leg['type'] # 'senator' or 'representative'
-                
-                # Map Geocodio format to our App format
                 title = "U.S. Senator" if role == 'senator' else "U.S. Representative"
                 
-                # Address extraction (Geocodio provides contact info)
+                # Robust address extraction
                 contact = leg.get('contact', {})
                 addr_raw = contact.get('address', 'United States Capitol, Washington DC 20510')
                 
-                # Simple parsing of the address string returned by Geocodio
-                # Example: "317 Russell Senate Office Building Washington DC 20510"
-                # We use a generic DC address if parsing gets too messy, ensuring delivery to the hill.
                 clean_address = {
                     'name': f"{leg['first_name']} {leg['last_name']}",
-                    'street': addr_raw, # Use the full string for line 1
+                    'street': addr_raw,
                     'city': "Washington",
                     'state': "DC",
-                    'zip': "20510" 
+                    'zip': "20510"
                 }
 
-                targets.append({
-                    'name': f"{leg['first_name']} {leg['last_name']}",
-                    'title': title,
-                    'address_obj': clean_address
-                })
+                # Avoid duplicates
+                is_duplicate = False
+                for t in targets:
+                    if t['name'] == clean_address['name']:
+                        is_duplicate = True
+                
+                if not is_duplicate:
+                    targets.append({
+                        'name': f"{leg['first_name']} {leg['last_name']}",
+                        'title': title,
+                        'address_obj': clean_address
+                    })
 
         if len(targets) == 0:
-            st.warning("⚠️ Address located, but no current legislators found.")
+            st.warning("⚠️ Location found, but no legislators listed in database.")
         
         return targets
 

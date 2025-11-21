@@ -8,7 +8,7 @@ import io
 import zipfile
 
 # Import core logic
-import voice_processor 
+import ai_engine 
 import database
 import letter_format
 import mailer
@@ -171,7 +171,6 @@ def show_main_app():
             if st.button("🔄 I've Paid (Refresh Status)"):
                  if payment_engine.check_payment_status(st.session_state.stripe_session_id):
                      st.session_state.payment_complete = True
-                     st.session_state.processed_ids.append(st.session_state.stripe_session_id)
                      st.rerun()
                  else:
                      st.error("Payment not found. Please pay first.")
@@ -218,7 +217,7 @@ def show_main_app():
     elif st.session_state.app_mode == "transcribing":
         with st.spinner("🧠 AI is writing your letter..."):
             try:
-                text = voice_processor.transcribe_audio(st.session_state.audio_path)
+                text = ai_engine.transcribe_audio(st.session_state.audio_path)
                 st.session_state.transcribed_text = text
                 st.session_state.app_mode = "editing"
                 st.rerun()
@@ -236,7 +235,7 @@ def show_main_app():
         edited_text = st.text_area("Edit Text:", value=st.session_state.transcribed_text, height=300)
         c1, c2 = st.columns([1, 3])
         if c1.button("✨ AI Polish"):
-             st.session_state.transcribed_text = voice_processor.polish_text(edited_text)
+             st.session_state.transcribed_text = ai_engine.polish_text(edited_text)
              st.rerun()
         if c2.button("🗑️ Re-Record (Free)"):
              st.session_state.app_mode = "recording"
@@ -259,28 +258,25 @@ def show_main_app():
                 sig_path = "temp_signature.png"
                 img.save(sig_path)
 
-            # --- CIVIC LOGIC (ROBUST ERROR HANDLING) ---
+            # --- CIVIC LOGIC ---
             if is_civic:
                 st.write("🏛️ Finding your Representatives...")
                 full_user_address = f"{from_street}, {from_city}, {from_state} {from_zip}"
                 
-                # Try to get reps, handle empty return gracefully
+                # Call to Civic Engine
                 try:
                     targets = civic_engine.get_reps(full_user_address)
-                except:
-                    targets = []
+                except Exception as e:
+                     st.error(f"Civic Engine Error: {e}")
+                     targets = []
 
                 if not targets:
                     status.update(label="❌ Error: Address Lookup Failed", state="error")
-                    st.error("Could not find representatives for this address.")
-                    st.info("Please check your Zip Code and Street Address.")
-                    
-                    # EXIT HATCH: Let them edit address and retry
-                    if st.button("✏️ Edit Address & Retry"):
-                        st.session_state.app_mode = "recording" # This effectively resets view to top
+                    st.error("Could not find representatives. Please check your address.")
+                    if st.button("Edit Address"):
+                        st.session_state.app_mode = "recording"
                         st.rerun()
-                    
-                    st.stop() # Stop processing here
+                    st.stop()
                 
                 final_files = []
                 addr_from = {'name': from_name, 'street': from_street, 'city': from_city, 'state': from_state, 'zip': from_zip}
@@ -335,7 +331,7 @@ def show_main_app():
                 with open(pdf_path, "rb") as f:
                     st.download_button("📄 Download Receipt", f, "letter.pdf", use_container_width=True)
             
-            # AUTO-SAVE
+            # AUTO-SAVE USER ADDRESS
             if st.session_state.get("user"):
                 try:
                     database.update_user_address(st.session_state.user.user.email, from_name, from_street, from_city, from_state, from_zip)
