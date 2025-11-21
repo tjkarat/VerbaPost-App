@@ -8,7 +8,7 @@ import io
 import zipfile
 
 # Import core logic
-import voice_processor 
+import ai_engine  # <--- REVERTED IMPORT
 import database
 import letter_format
 import mailer
@@ -206,7 +206,8 @@ def show_main_app():
     elif st.session_state.app_mode == "transcribing":
         with st.spinner("🧠 AI is writing your letter..."):
             try:
-                text = voice_processor.transcribe_audio(st.session_state.audio_path)
+                # REVERTED CALL TO AI_ENGINE
+                text = ai_engine.transcribe_audio(st.session_state.audio_path)
                 st.session_state.transcribed_text = text
                 st.session_state.app_mode = "editing"
                 st.rerun()
@@ -224,7 +225,8 @@ def show_main_app():
         edited_text = st.text_area("Edit Text:", value=st.session_state.transcribed_text, height=300)
         c1, c2 = st.columns([1, 3])
         if c1.button("✨ AI Polish"):
-             st.session_state.transcribed_text = voice_processor.polish_text(edited_text)
+             # REVERTED CALL TO AI_ENGINE
+             st.session_state.transcribed_text = ai_engine.polish_text(edited_text)
              st.rerun()
         if c2.button("🗑️ Re-Record (Free)"):
              st.session_state.app_mode = "recording"
