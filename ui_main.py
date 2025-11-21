@@ -26,6 +26,13 @@ COST_HEIRLOOM = 5.99
 COST_CIVIC = 6.99
 COST_OVERAGE = 1.00
 
+def validate_zip(zipcode, state):
+    if not zipcodes.is_real(zipcode): return False, "Invalid Zip Code"
+    details = zipcodes.matching(zipcode)
+    if details and details[0]['state'] != state.upper():
+         return False, f"Zip is in {details[0]['state']}, not {state}"
+    return True, "Valid"
+
 def reset_app():
     st.session_state.audio_path = None
     st.session_state.transcribed_text = ""
@@ -33,6 +40,10 @@ def reset_app():
     st.session_state.overage_agreed = False
     st.session_state.payment_complete = False
     st.query_params.clear()
+    if "stripe_url" in st.session_state:
+        del st.session_state.stripe_url
+    if "last_config" in st.session_state:
+        del st.session_state.last_config
     st.rerun()
 
 def show_main_app():
@@ -43,23 +54,25 @@ def show_main_app():
         session_id = st.query_params["session_id"]
         
         # Load the Draft Data from DB
-        draft = database.get_letter(letter_id)
-        if draft:
-            # Restore the session state from the database draft
-            st.session_state["to_name"] = draft.recipient_name
-            st.session_state["to_street"] = draft.recipient_street
-            st.session_state["to_city"] = draft.recipient_city
-            st.session_state["to_state"] = draft.recipient_state
-            st.session_state["to_zip"] = draft.recipient_zip
-            
-            # Verify Payment
-            if payment_engine.check_payment_status(session_id):
-                st.session_state.payment_complete = True
-                st.toast("✅ Payment Confirmed! Draft Loaded.")
-                # Clean URL but stay on page
-                st.query_params.clear()
-            else:
-                st.error("Payment verification failed.")
+        try:
+            draft = database.get_letter(letter_id)
+            if draft:
+                # Restore the session state
+                st.session_state["to_name"] = draft.recipient_name
+                st.session_state["to_street"] = draft.recipient_street
+                st.session_state["to_city"] = draft.recipient_city
+                st.session_state["to_state"] = draft.recipient_state
+                st.session_state["to_zip"] = draft.recipient_zip
+                
+                # Verify Payment
+                if payment_engine.check_payment_status(session_id):
+                    st.session_state.payment_complete = True
+                    st.toast("✅ Payment Confirmed! Draft Loaded.")
+                    st.query_params.clear()
+                else:
+                    st.error("Payment verification failed.")
+        except Exception as e:
+            st.error(f"Error loading draft: {e}")
 
     # --- INIT STATE ---
     if "app_mode" not in st.session_state: st.session_state.app_mode = "recording"
@@ -73,7 +86,6 @@ def show_main_app():
     st.subheader("1. Addressing")
     col_to, col_from = st.tabs(["👉 Recipient", "👈 Sender"])
     
-    # Helper to grab session state safely
     def get(k): return st.session_state.get(k, "")
 
     with col_to:
@@ -92,9 +104,9 @@ def show_main_app():
         from_state = c3.text_input("Your State", value=get("from_state"), max_chars=2, key="from_state")
         from_zip = c4.text_input("Your Zip", value=get("from_zip"), max_chars=5, key="from_zip")
 
-    if not (to_name and to_street and to_city and to_state and to_zip):
-        st.info("👇 Fill out Recipient to continue.")
-        return
+    # Validate Inputs
+    valid_recipient = to_name and to_street and to_city and to_state and to_zip
+    valid_sender = from_name and from_street and from_city and from_state and from_zip
 
     # --- 2. SETTINGS & SIGNATURE ---
     st.divider()
@@ -114,6 +126,16 @@ def show_main_app():
             height=100, width=200, drawing_mode="freedraw", key="sig"
         )
 
+    # Validation Check before Payment
+    if is_civic:
+        if not valid_sender:
+            st.warning("👇 Fill out **Sender** to proceed.")
+            return
+    else:
+        if not (valid_recipient and valid_sender):
+            st.info("👇 Fill out **Recipient** and **Sender** to proceed.")
+            return
+
     # --- 3. PAYMENT GATE ---
     st.divider()
     if is_heirloom: price = COST_HEIRLOOM
@@ -124,46 +146,39 @@ def show_main_app():
         st.subheader("4. Payment")
         st.info(f"Total: **${price}**")
         
-        # 1. SAVE DRAFT TO DB (This persists the address!)
-        if st.button(f"💾 Save & Pay ${price}"):
-            user_email = st.session_state.get("user_email", "guest@verbapost.com")
-            
-            # Save Draft to DB
+        # 1. Auto-Save Draft (Background)
+        user_email = st.session_state.get("user_email", "guest@verbapost.com")
+        draft_id = None
+        try:
             draft_id = database.save_draft(user_email, to_name, to_street, to_city, to_state, to_zip)
+        except Exception as e:
+            st.error(f"Database Error: {e}")
+
+        if draft_id:
+            # 2. Generate Simple Return Link
+            # We only pass letter_id, not the huge address string
+            success_link = f"{YOUR_APP_URL}?letter_id={draft_id}"
             
-            if draft_id:
-                # 2. Generate Link with Draft ID
-                # We append letter_id so we know which draft to load on return
-                return_link = f"{YOUR_APP_URL}?letter_id={draft_id}"
-                
-                url, session_id = payment_engine.create_checkout_session(
-                    f"VerbaPost {service_tier}", 
-                    int(price * 100), 
-                    return_link, # Success URL
-                    YOUR_APP_URL
+            # Check if we need a new link (price changed)
+            current_config = f"{service_tier}_{price}"
+            if "stripe_url" not in st.session_state or st.session_state.get("last_config") != current_config:
+                 url, session_id = payment_engine.create_checkout_session(
+                    product_name=f"VerbaPost {service_tier}",
+                    amount_in_cents=int(price * 100),
+                    success_url=success_link, 
+                    cancel_url=YOUR_APP_URL
                 )
-                
-                if url:
-                    # 3. Force Same-Tab Redirect using HTML
-                    # target="_self" forces it to stay in the same window
-                    st.markdown(f'''
-                        <a href="{url}" target="_self">
-                            <button style="
-                                background-color:#FF4B4B; 
-                                color:white; 
-                                border:none; 
-                                padding:10px 20px; 
-                                border-radius:5px; 
-                                font-size:16px; 
-                                cursor:pointer;">
-                                👉 Click to Pay Now (Secure)
-                            </button>
-                        </a>
-                    ''', unsafe_allow_html=True)
-                else:
-                    st.error("Payment Error.")
+                 st.session_state.stripe_url = url
+                 st.session_state.stripe_session_id = session_id
+                 st.session_state.last_config = current_config
+            
+            if st.session_state.stripe_url:
+                # 3. SINGLE BUTTON (Native Link Button)
+                # This is cleaner than the HTML hack and works better on mobile
+                st.link_button(f"💳 Pay ${price} & Unlock", st.session_state.stripe_url, type="primary")
+                st.caption("You will be redirected back automatically.")
             else:
-                st.error("Could not save draft. Are you logged in?")
+                st.error("Payment Link Error. Check Secrets.")
         
         st.stop()
 
