@@ -12,10 +12,9 @@ def get_reps(address):
         st.error("❌ Configuration Error: Google Civic API Key is missing in Secrets.")
         return []
 
-    # FIX: Back to the official, standard URL
-    url = "https://www.googleapis.com/civicinfo/v2/representatives"
+    # FIX: The definitive, correct endpoint for v2
+    url = "https://civicinfo.googleapis.com/civicinfo/v2/representatives"
     
-    # We ask for Country level (Federal) legislators
     params = {
         'key': API_KEY,
         'address': address,
@@ -25,39 +24,33 @@ def get_reps(address):
 
     try:
         r = requests.get(url, params=params)
+        
+        # Specific handling for 404 vs other errors
+        if r.status_code == 404:
+            st.error(f"❌ Google API Error (404): The API endpoint URL is wrong or the address format is invalid.")
+            return []
+            
         data = r.json()
         
-        # Error Handling
         if "error" in data:
-            error_content = data['error']
-            # Handle cases where error is a dict or string
-            if isinstance(error_content, dict):
-                msg = error_content.get('message', str(error_content))
-                code = error_content.get('code', '')
-            else:
-                msg = str(error_content)
-                code = ""
-
-            st.error(f"❌ Google API Error ({code}): {msg}")
-            
-            if int(code) == 403:
-                st.info("💡 Tip: Go to Google Cloud Console -> APIs & Services -> Enabled APIs. Make sure 'Google Civic Information API' is ENABLED for this key.")
-            
+            err_content = data['error']
+            msg = err_content.get('message', str(err_content)) if isinstance(err_content, dict) else str(err_content)
+            st.error(f"❌ Google API Error: {msg}")
             return []
 
         targets = []
         
         if 'offices' not in data:
-            st.warning(f"⚠️ Google found the address, but returned no representatives.")
+            st.warning(f"⚠️ No representatives found. Google couldn't match this address to a district.")
             return []
 
         for office in data.get('offices', []):
             name_lower = office['name'].lower()
-            # Filter for Senate and House
             if "senate" in name_lower or "senator" in name_lower or "representative" in name_lower:
                 for index in office['officialIndices']:
                     official = data['officials'][index]
                     
+                    # Parse Address
                     addr_list = official.get('address', [])
                     if not addr_list:
                         clean_address = {
