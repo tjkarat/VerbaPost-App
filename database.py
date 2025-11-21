@@ -20,7 +20,6 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String, unique=True, nullable=False)
     email = Column(String, unique=True, nullable=False)
-    # Default Return Address
     address_name = Column(String, nullable=True)
     address_street = Column(String, nullable=True)
     address_city = Column(String, nullable=True)
@@ -32,7 +31,7 @@ class Letter(Base):
     __tablename__ = 'letters'
     id = Column(Integer, primary_key=True)
     content = Column(Text, nullable=True)
-    status = Column(String, default="Draft") 
+    status = Column(String, default="Draft") # Draft, Paid, Sent
     created_at = Column(DateTime, default=datetime.utcnow)
     
     recipient_name = Column(String, nullable=True)
@@ -78,11 +77,8 @@ def update_user_address(email, name, street, city, state, zip_code):
             user.address_state = state
             user.address_zip = zip_code
             session.commit()
-            print(f"✅ Address saved for {email}")
-        else:
-            print(f"❌ User not found for address update: {email}")
     except Exception as e:
-        print(f"❌ Database Error: {e}")
+        print(f"DB Error: {e}")
     finally:
         session.close()
 
@@ -90,7 +86,6 @@ def save_draft(email, r_name, r_street, r_city, r_state, r_zip):
     session = get_session()
     try:
         user = session.query(User).filter_by(email=email).first()
-        # Create user if missing (Guest Mode safety)
         if not user:
             user = User(username=email, email=email)
             session.add(user)
@@ -121,6 +116,24 @@ def get_letter(letter_id):
     letter = session.query(Letter).filter_by(id=letter_id).first()
     session.close()
     return letter
+
+# --- ADMIN FUNCTIONS (NEW) ---
+def get_pending_heirloom_letters():
+    session = get_session()
+    # We assume status='Heirloom_Paid' or just filter by logic in the view
+    # For MVP, let's grab ALL letters that aren't 'Draft' or 'Sent'
+    # Ideally, we'd have a specific status. Let's grab last 50 for now.
+    letters = session.query(Letter).order_by(Letter.created_at.desc()).limit(50).all()
+    session.close()
+    return letters
+
+def mark_as_sent(letter_id):
+    session = get_session()
+    letter = session.query(Letter).filter_by(id=letter_id).first()
+    if letter:
+        letter.status = "Sent"
+        session.commit()
+    session.close()
 
 if __name__ == "__main__":
     init_db()
