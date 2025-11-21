@@ -293,4 +293,4 @@ def show_main_app():
                     pdf_path = letter_format.create_pdf(
                         st.session_state.transcribed_text, 
                         f"{target['name']}\n{t_addr['street']}\n{t_addr['city']}, {t_addr['state']} {t_addr['zip']}",
-                        f"{from_name}\n{from_street}\n{from
+                        f"{from_name}\n{from_street}\n{from# Force Update
