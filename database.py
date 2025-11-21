@@ -31,11 +31,10 @@ class User(Base):
 class Letter(Base):
     __tablename__ = 'letters'
     id = Column(Integer, primary_key=True)
-    content = Column(Text, nullable=True) # Allow empty content for Drafts
+    content = Column(Text, nullable=True)
     status = Column(String, default="Draft") 
     created_at = Column(DateTime, default=datetime.utcnow)
     
-    # Recipient Info (The Memory)
     recipient_name = Column(String, nullable=True)
     recipient_street = Column(String, nullable=True)
     recipient_city = Column(String, nullable=True)
@@ -51,6 +50,12 @@ def init_db():
 def get_session():
     return sessionmaker(bind=get_engine())()
 
+def get_user_by_email(email):
+    session = get_session()
+    user = session.query(User).filter_by(email=email).first()
+    session.close()
+    return user
+
 def create_or_get_user(email):
     session = get_session()
     user = session.query(User).filter_by(email=email).first()
@@ -64,21 +69,33 @@ def create_or_get_user(email):
 
 def update_user_address(email, name, street, city, state, zip_code):
     session = get_session()
-    user = session.query(User).filter_by(email=email).first()
-    if user:
-        user.address_name = name
-        user.address_street = street
-        user.address_city = city
-        user.address_state = state
-        user.address_zip = zip_code
-        session.commit()
-    session.close()
+    try:
+        user = session.query(User).filter_by(email=email).first()
+        if user:
+            user.address_name = name
+            user.address_street = street
+            user.address_city = city
+            user.address_state = state
+            user.address_zip = zip_code
+            session.commit()
+            print(f"✅ Address saved for {email}")
+        else:
+            print(f"❌ User not found for address update: {email}")
+    except Exception as e:
+        print(f"❌ Database Error: {e}")
+    finally:
+        session.close()
 
-# --- NEW FUNCTION: SAVE DRAFT ---
 def save_draft(email, r_name, r_street, r_city, r_state, r_zip):
     session = get_session()
-    user = session.query(User).filter_by(email=email).first()
-    if user:
+    try:
+        user = session.query(User).filter_by(email=email).first()
+        # Create user if missing (Guest Mode safety)
+        if not user:
+            user = User(username=email, email=email)
+            session.add(user)
+            session.commit()
+            
         draft = Letter(
             author=user,
             status="Pending Payment",
@@ -87,16 +104,17 @@ def save_draft(email, r_name, r_street, r_city, r_state, r_zip):
             recipient_city=r_city,
             recipient_state=r_state,
             recipient_zip=r_zip,
-            content="" # Empty until recorded
+            content=""
         )
         session.add(draft)
         session.commit()
         session.refresh(draft)
-        draft_id = draft.id
+        return draft.id
+    except Exception as e:
+        print(f"Draft Error: {e}")
+        return None
+    finally:
         session.close()
-        return draft_id
-    session.close()
-    return None
 
 def get_letter(letter_id):
     session = get_session()
