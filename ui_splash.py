@@ -1,11 +1,11 @@
 import streamlit as st
 
-# Version 13.0 - No f-strings (Guaranteed Syntax Fix)
+# Version 14.0 - Quoted Heredoc Fix
 def show_splash():
     # --- CONFIG ---
-    P_STANDARD = ".99"
-    P_HEIRLOOM = ".99"
-    P_CIVIC = ".99"
+    P_STANDARD = "2.99"
+    P_HEIRLOOM = "5.99"
+    P_CIVIC = "6.99"
 
     # --- HERO ---
     st.title("VerbaPost 📮")
@@ -15,6 +15,7 @@ def show_splash():
     st.divider()
 
     # --- HOW IT WORKS ---
+    st.subheader("How it Works")
     c1, c2, c3 = st.columns(3)
     with c1:
         st.info("🎙️ **1. Dictate**")
@@ -31,10 +32,10 @@ def show_splash():
     # --- PRICING TIERS ---
     st.subheader("Simple Pricing")
     
-    # PURE STRING - NO f-string, NO variables
-    css = """
+    # NOTE: We use {{ }} for CSS to escape them in the f-string
+    html_pricing = f"""
     <style>
-        .price-card {
+        .price-card {{
             background-color: #f9f9f9;
             padding: 15px;
             border-radius: 10px;
@@ -44,39 +45,36 @@ def show_splash():
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-        }
-        .price-tag {
+        }}
+        .price-tag {{
             color: #E63946;
             font-size: 32px;
             font-weight: bold;
             margin: 10px 0;
-        }
-        .price-title {
+        }}
+        .price-title {{
             font-size: 18px;
             font-weight: 600;
             margin-bottom: 5px;
             color: #333;
-        }
-        .price-desc {
+        }}
+        .price-desc {{
             font-size: 14px;
             color: #666;
             line-height: 1.4;
-        }
-        .grid-container {
+        }}
+        .grid-container {{
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 15px;
-        }
+        }}
     </style>
-    """
 
-    # CONCATENATION - Impossible to break syntax
-    html_content = """
     <div class="grid-container">
         <div class="price-card">
             <div>
                 <div class="price-title">⚡ Standard</div>
-                <div class="price-tag">""" + P_STANDARD + """</div>
+                <div class="price-tag">${P_STANDARD}</div>
                 <div class="price-desc">API Fulfillment<br>Window Envelope<br>Mailed in 24hrs</div>
             </div>
         </div>
@@ -84,7 +82,7 @@ def show_splash():
         <div class="price-card" style="border: 2px solid #4CAF50; background-color: #f0fff4;">
             <div>
                 <div class="price-title">🏺 Heirloom</div>
-                <div class="price-tag">""" + P_HEIRLOOM + """</div>
+                <div class="price-tag">${P_HEIRLOOM}</div>
                 <div class="price-desc">Hand-Stamped<br>Premium Paper<br>Mailed from Nashville</div>
             </div>
         </div>
@@ -92,14 +90,13 @@ def show_splash():
         <div class="price-card">
             <div>
                 <div class="price-title">🏛️ Civic Blast</div>
-                <div class="price-tag">""" + P_CIVIC + """</div>
+                <div class="price-tag">${P_CIVIC}</div>
                 <div class="price-desc">Activism Mode<br>Auto-Find Reps<br>Mails Senate + House</div>
             </div>
         </div>
     </div>
     """
-    
-    st.markdown(css + html_content, unsafe_allow_html=True) 
+    st.markdown(html_pricing, unsafe_allow_html=True) 
 
     st.divider()
 
