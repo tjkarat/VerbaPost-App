@@ -1,8 +1,6 @@
 import streamlit as st
-import os
 
 def show_splash():
-    # --- CONFIG ---
     st.title("VerbaPost 📮")
     st.subheader("The Authenticity Engine.")
     st.markdown("##### Texts are trivial. Emails are ignored. Real letters get read.")
@@ -10,29 +8,41 @@ def show_splash():
     st.divider()
 
     # --- HOW IT WORKS ---
-    st.subheader("How it Works")
     c1, c2, c3 = st.columns(3)
     with c1:
-        st.markdown("🎙️ **1. Dictate**")
+        st.info("🎙️ **1. Dictate**")
         st.caption("Tap the mic. AI handles the typing.")
     with c2:
-        st.markdown("✍️ **2. Sign**")
-        st.caption("Review the text, sign your name on screen.")
+        st.warning("✍️ **2. Sign**")
+        st.caption("Review the text, sign on screen.")
     with c3:
-        st.markdown("📮 **3. We Mail**")
+        st.success("📮 **3. We Mail**")
         st.caption("We print, stamp, and mail it.")
 
     st.divider()
 
-    # --- PRICING TIERS (READ FROM FILE) ---
+    # --- PRICING (Native Containers - Bulletproof) ---
     st.subheader("Simple Pricing")
     
-    try:
-        with open("splash.html", "r") as f:
-            html_content = f.read()
-            st.markdown(html_content, unsafe_allow_html=True)
-    except Exception as e:
-        st.error(f"Error loading pricing display: {e}")
+    p1, p2, p3 = st.columns(3)
+    
+    with p1:
+        with st.container(border=True):
+            st.markdown("### ⚡ Standard")
+            st.metric(label="Price", value=".99", label_visibility="collapsed")
+            st.caption("API Fulfillment • Window Envelope • Mailed in 24hrs")
+
+    with p2:
+        with st.container(border=True):
+            st.markdown("### 🏺 Heirloom")
+            st.metric(label="Price", value=".99", label_visibility="collapsed")
+            st.caption("Hand-Stamped • Premium Paper • Mailed from Nashville")
+
+    with p3:
+        with st.container(border=True):
+            st.markdown("### 🏛️ Civic Blast")
+            st.metric(label="Price", value=".99", label_visibility="collapsed")
+            st.caption("Activism Mode • Auto-Find Reps • Mails Senate + House")
 
     st.divider()
 

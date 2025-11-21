@@ -1,99 +1,75 @@
-import requests
 import streamlit as st
-import urllib.parse
+# NEW IMPORTS
+from ui_splash import show_splash
+from ui_main import show_main_app
+from ui_login import show_login
+import auth_engine 
+import payment_engine
 
-# Load Key
-try:
-    API_KEY = st.secrets["google"]["civic_key"]
-except:
-    API_KEY = None
+st.set_page_config(page_title="VerbaPost", page_icon="📮", layout="centered")
 
-def get_reps(address):
-    # 1. Sanity Check the Input
-    if not address or len(address.strip()) < 10:
-        st.error(f"❌ Address Error: The address sent to Google was too short: '{address}'")
-        return []
+def inject_custom_css():
+    st.markdown("""
+        <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        .block-container {padding-top: 1rem !important; padding-bottom: 1rem !important;}
+        div.stButton > button {border-radius: 8px; font-weight: 600; border: 1px solid #e0e0e0;}
+        input {border-radius: 5px !important;}
+        </style>
+        """, unsafe_allow_html=True)
+inject_custom_css()
 
-    if not API_KEY:
-        st.error("❌ Configuration Error: Google Civic API Key is missing in Secrets.")
-        return []
+# --- HANDLERS ---
+def handle_login(email, password):
+    user, error = auth_engine.sign_in(email, password)
+    if error:
+        st.error(f"Login Failed: {error}")
+    else:
+        st.success("Welcome!")
+        st.session_state.user = user
+        st.session_state.user_email = email
+        saved = auth_engine.get_current_address(email)
+        if saved:
+            st.session_state["from_name"] = saved.get("name", "")
+            st.session_state["from_street"] = saved.get("street", "")
+            st.session_state["from_city"] = saved.get("city", "")
+            st.session_state["from_state"] = saved.get("state", "")
+            st.session_state["from_zip"] = saved.get("zip", "")
+        st.session_state.current_view = "main_app"
+        st.rerun()
 
-    # 2. The Standard Endpoint
-    url = "https://www.googleapis.com/civicinfo/v2/representatives"
-    
-    params = {
-        'key': API_KEY,
-        'address': address,
-        'includeOffices': 'true'
-    }
+def handle_signup(email, password, name, street, city, state, zip_code):
+    user, error = auth_engine.sign_up(email, password, name, street, city, state, zip_code)
+    if error:
+        st.error(f"Error: {error}")
+    else:
+        st.success("Created!")
+        st.session_state.user = user
+        st.session_state.user_email = email
+        st.session_state.current_view = "main_app"
+        st.rerun()
 
-    # DEBUG: Print what we are sending (masked key)
-    st.info(f"🔍 Searching Google Civic for: **{address}**")
+# --- ROUTER ---
+if "session_id" in st.query_params:
+    if payment_engine.check_payment_status(st.query_params["session_id"]):
+        st.session_state.current_view = "main_app"
+        st.session_state.payment_complete = True
+        st.query_params.clear() 
 
-    try:
-        r = requests.get(url, params=params)
-        
-        # 3. Handle HTTP Errors
-        if r.status_code == 404:
-            st.error(f"❌ Google Error 404: The API could not find representatives for this specific address.")
-            st.caption("Try formatting it like: '1600 Amphitheatre Pkwy, Mountain View, CA 94043'")
-            return []
-            
-        if r.status_code == 403:
-            st.error("❌ Google Error 403: Permission Denied.")
-            st.info("Ensure the 'Civic Information API' is enabled in your Google Cloud Console.")
-            return []
+if "current_view" not in st.session_state:
+    st.session_state.current_view = "splash" 
 
-        data = r.json()
-        
-        if "error" in data:
-            msg = data['error'].get('message', 'Unknown Error')
-            st.error(f"❌ API Error: {msg}")
-            return []
-
-        targets = []
-        
-        # 4. Parse Results
-        if 'offices' not in data:
-            st.warning("⚠️ No representatives found.")
-            return []
-
-        for office in data.get('offices', []):
-            name_lower = office['name'].lower()
-            # Filter for Federal Congress
-            if "senate" in name_lower or "senator" in name_lower or "house of representatives" in name_lower:
-                
-                for index in office['officialIndices']:
-                    official = data['officials'][index]
-                    
-                    # Address Parsing (Handle missing addresses)
-                    addr_list = official.get('address', [])
-                    if not addr_list:
-                        clean_address = {
-                            'name': official['name'],
-                            'street': 'United States Capitol',
-                            'city': 'Washington',
-                            'state': 'DC',
-                            'zip': '20510'
-                        }
-                    else:
-                        addr_raw = addr_list[0]
-                        clean_address = {
-                            'name': official['name'],
-                            'street': addr_raw.get('line1', ''),
-                            'city': addr_raw.get('city', ''),
-                            'state': addr_raw.get('state', ''),
-                            'zip': addr_raw.get('zip', '')
-                        }
-                    
-                    targets.append({
-                        'name': official['name'],
-                        'title': office['name'],
-                        'address_obj': clean_address
-                    })
-        
-        return targets
-
-    except Exception as e:
-        st.error(f"❌ System Crash: {e}")
-        return []
+if st.session_state.current_view == "splash":
+    show_splash()
+elif st.session_state.current_view == "login":
+    show_login(handle_login, handle_signup)
+elif st.session_state.current_view == "main_app":
+    with st.sidebar:
+        if st.button("🏠 Home"):
+            st.session_state.current_view = "splash"
+            st.rerun()
+        if st.session_state.get("user"):
+            st.caption(f"User: {st.session_state.user_email}")
+    show_main_app()
