@@ -1,5 +1,4 @@
 import streamlit as st
-# CORRECTED IMPORTS
 from ui_splash import show_splash
 from ui_main import show_main_app
 from ui_login import show_login
@@ -51,36 +50,27 @@ def handle_signup(email, password, name, street, city, state, zip_code):
         st.session_state.current_view = "main_app"
         st.rerun()
 
-# --- ROUTING LOGIC (The Fix) ---
-# Check for Stripe Return immediately
+# --- ROUTING LOGIC (Fix for Splash Loop) ---
+# If Stripe sent us back, we MUST go to main_app, regardless of default
 if "session_id" in st.query_params:
-    # Force view to main app so we don't land on splash
     st.session_state.current_view = "main_app"
-    
-    # Verify payment status
-    if payment_engine.check_payment_status(st.query_params["session_id"]):
-        st.session_state.payment_complete = True
-        st.toast("✅ Payment Confirmed!")
-        # We keep the query param for now so ui_main can read it too, 
-        # ui_main will clear it after processing.
 
-# Default State
+# Initialize defaults if not set
 if "current_view" not in st.session_state:
     st.session_state.current_view = "splash" 
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# --- ROUTER ---
+# Router
 if st.session_state.current_view == "splash":
     show_splash()
 elif st.session_state.current_view == "login":
     show_login(handle_login, handle_signup)
 elif st.session_state.current_view == "main_app":
     with st.sidebar:
-        if st.button("🏠 Home", use_container_width=True):
+        if st.button("🏠 Home"):
             st.session_state.current_view = "splash"
             st.rerun()
         if st.session_state.get("user"):
             st.caption(f"User: {st.session_state.user_email}")
-        
     show_main_app()
