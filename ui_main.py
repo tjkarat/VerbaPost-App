@@ -47,30 +47,31 @@ def reset_app():
     st.rerun()
 
 def show_main_app():
-    # --- INIT STATE ---
-    if "app_mode" not in st.session_state: st.session_state.app_mode = "recording"
-    if "audio_path" not in st.session_state: st.session_state.audio_path = None
-    if "payment_complete" not in st.session_state: st.session_state.payment_complete = False
-    if "processed_ids" not in st.session_state: st.session_state.processed_ids = [] # Track used receipts
+    # --- 0. SESSION STATE SAFETY CHECK (THE FIX) ---
+    # Ensure these keys exist before we access them later
+    defaults = {
+        "app_mode": "recording",
+        "audio_path": None,
+        "transcribed_text": "",
+        "overage_agreed": False,
+        "payment_complete": False,
+        "processed_ids": []
+    }
+    for key, val in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = val
 
-    # --- AUTO-DETECT RETURN FROM STRIPE (SECURE) ---
+    # --- 1. AUTO-DETECT RETURN FROM STRIPE ---
     if "session_id" in st.query_params:
         session_id = st.query_params["session_id"]
-        
-        # CHECK 1: Have we already used this receipt?
-        if session_id in st.session_state.processed_ids:
-            # If yes, do nothing. Let the user hit the pay wall.
-            pass
-        else:
-            # CHECK 2: Is it valid with Stripe?
+        if session_id not in st.session_state.processed_ids:
             if payment_engine.check_payment_status(session_id):
                 st.session_state.payment_complete = True
-                st.session_state.processed_ids.append(session_id) # Mark as used
+                st.session_state.processed_ids.append(session_id)
                 st.toast("✅ Payment Confirmed! Recorder Unlocked.")
                 st.query_params.clear() 
             else:
                 st.error("Payment verification failed.")
-
     
     # --- SIDEBAR RESET ---
     with st.sidebar:
@@ -78,7 +79,7 @@ def show_main_app():
         if st.button("🔄 Start New Letter", type="primary", use_container_width=True):
             reset_app()
     
-    # --- 1. ADDRESSING ---
+    # --- 2. ADDRESSING ---
     st.subheader("1. Addressing")
     col_to, col_from = st.tabs(["👉 Recipient", "👈 Sender"])
 
@@ -100,7 +101,7 @@ def show_main_app():
         from_state = c3.text_input("Your State", value=get_val("from_state"), max_chars=2, key="from_state")
         from_zip = c4.text_input("Your Zip", value=get_val("from_zip"), max_chars=5, key="from_zip")
 
-    # Settings & Logic Switch
+    # Validation Logic
     service_tier = st.radio("Service Level:", 
         [f"⚡ Standard (${COST_STANDARD})", f"🏺 Heirloom (${COST_HEIRLOOM})", f"🏛️ Civic (${COST_CIVIC})"],
         key="tier_select"
@@ -108,7 +109,6 @@ def show_main_app():
     is_heirloom = "Heirloom" in service_tier
     is_civic = "Civic" in service_tier
 
-    # Validation Gates
     if is_civic:
         st.info("🏛️ **Civic Mode:** We will find your reps based on your Return Address.")
         if not (from_name and from_street and from_city and from_state and from_zip):
@@ -116,13 +116,13 @@ def show_main_app():
              return
     else:
         if not (to_name and to_street and to_city and to_state and to_zip):
-            st.info("👇 Fill out the **Recipient** tab.")
+            st.info("👇 Fill out the **Recipient** tab to unlock the tools.")
             return
         if not (from_name and from_street and from_city and from_state and from_zip):
              st.warning("👇 Fill out the **Sender** tab.")
              return
 
-    # --- 2. SIGNATURE ---
+    # --- 3. SIGNATURE ---
     st.divider()
     st.subheader("3. Sign")
     canvas_result = st_canvas(
@@ -136,10 +136,13 @@ def show_main_app():
     if is_heirloom: price = COST_HEIRLOOM
     elif is_civic: price = COST_CIVIC
     else: price = COST_STANDARD
-    final_price = price + (COST_OVERAGE if st.session_state.overage_agreed else 0.00)
+    
+    # Ensure safe access to overage_agreed
+    overage = COST_OVERAGE if st.session_state.get("overage_agreed", False) else 0.00
+    final_price = price + overage
 
     # ==================================================
-    #  PAYMENT GATE (SECURE)
+    #  PAYMENT GATE
     # ==================================================
     if not st.session_state.payment_complete:
         st.subheader("4. Payment")
@@ -171,7 +174,7 @@ def show_main_app():
             if st.button("🔄 I've Paid (Refresh Status)"):
                  if payment_engine.check_payment_status(st.session_state.stripe_session_id):
                      st.session_state.payment_complete = True
-                     st.session_state.processed_ids.append(st.session_state.stripe_session_id) # Mark Used
+                     st.session_state.processed_ids.append(st.session_state.stripe_session_id)
                      st.rerun()
                  else:
                      st.error("Payment not found. Please pay first.")
@@ -259,7 +262,6 @@ def show_main_app():
                 sig_path = "temp_signature.png"
                 img.save(sig_path)
 
-            # --- CIVIC LOGIC ---
             if is_civic:
                 st.write("🏛️ Finding your Representatives...")
                 full_user_address = f"{from_street}, {from_city}, {from_state} {from_zip}"
@@ -301,7 +303,6 @@ def show_main_app():
                 st.success("All 3 Letters Sent!")
                 st.download_button("📦 Download All", zip_buffer.getvalue(), "Civic_Blast.zip", "application/zip")
 
-            # --- STANDARD LOGIC ---
             else:
                 pdf_path = letter_format.create_pdf(
                     st.session_state.transcribed_text, 
@@ -326,7 +327,6 @@ def show_main_app():
                 with open(pdf_path, "rb") as f:
                     st.download_button("📄 Download Receipt", f, "letter.pdf", use_container_width=True)
             
-            # AUTO-SAVE
             if st.session_state.get("user"):
                 try:
                     database.update_user_address(st.session_state.user.user.email, from_name, from_street, from_city, from_state, from_zip)
