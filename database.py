@@ -31,7 +31,7 @@ class Letter(Base):
     __tablename__ = 'letters'
     id = Column(Integer, primary_key=True)
     content = Column(Text, nullable=True)
-    status = Column(String, default="Draft") 
+    status = Column(String, default="Draft") # Draft, Queued, Sent
     created_at = Column(DateTime, default=datetime.utcnow)
     recipient_name = Column(String, nullable=True)
     recipient_street = Column(String, nullable=True)
@@ -91,7 +91,7 @@ def save_draft(email, r_name, r_street, r_city, r_state, r_zip):
             
         draft = Letter(
             author=user,
-            status="Draft", # Initial status
+            status="Pending Payment",
             recipient_name=r_name,
             recipient_street=r_street,
             recipient_city=r_city,
@@ -115,8 +115,23 @@ def get_letter(letter_id):
     session.close()
     return letter
 
-# --- ADMIN & STATUS FUNCTIONS ---
+def get_last_pending_letter(user_email):
+    """Fetches the last letter waiting for content/status update."""
+    session = get_session()
+    try:
+        user = session.query(User).filter_by(email=user_email).first()
+        if user:
+            # Find the most recent letter that is not finalized
+            letter = session.query(Letter).filter_by(user_id=user.id).filter(Letter.status != 'Sent').order_by(Letter.created_at.desc()).first()
+            session.close()
+            return letter
+    except:
+        session.close()
+        return None
+    session.close()
+    return None
 
+# --- ADMIN & STATUS FUNCTIONS (UPDATED) ---
 def update_letter_status(letter_id, new_status, content=None):
     session = get_session()
     try:
@@ -130,14 +145,23 @@ def update_letter_status(letter_id, new_status, content=None):
         session.close()
 
 def get_admin_queue():
-    """Fetches all letters that are Paid/Queued but not Sent."""
+    """Fetches all letters marked 'Queued' for manual printing."""
     session = get_session()
     try:
-        # We grab letters marked 'Queued' (Heirloom)
-        # We use joinedload to get the User email too
+        # Filter for letters that are ready for printing ('Queued')
         letters = session.query(Letter).options(joinedload(Letter.author)).filter(Letter.status == 'Queued').order_by(Letter.created_at.desc()).all()
-        session.expunge_all() # Detach from session so we can use in UI
+        session.expunge_all() 
         return letters
+    finally:
+        session.close()
+
+def mark_as_sent(letter_id):
+    session = get_session()
+    try:
+        letter = session.query(Letter).filter_by(id=letter_id).first()
+        if letter:
+            letter.status = "Sent"
+            session.commit()
     finally:
         session.close()
 
