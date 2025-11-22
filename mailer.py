@@ -10,7 +10,7 @@ except:
 def send_letter(pdf_path, to_address, from_address):
     """
     Sends a physical letter via Lob.
-    Handles both 'street' (simple) and 'address_line1' (official) formats.
+    Handles key mapping (street -> address_line1) automatically.
     """
     try:
         # Helper to map keys safely
@@ -26,7 +26,7 @@ def send_letter(pdf_path, to_address, from_address):
         clean_to = map_address(to_address)
         clean_from = map_address(from_address)
 
-        # Verify keys exist
+        # Validation
         if not clean_to['address_line1']:
             return {"error": "Missing address line for recipient"}
 
