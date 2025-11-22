@@ -1,66 +1,45 @@
-import requests
 import streamlit as st
-import os
+import lob
 
 # Load API Key
 try:
-    LOB_API_KEY = st.secrets["lob"]["api_key"]
-    LOB_AVAILABLE = True
+    lob.api_key = st.secrets["lob"]["api_key"]
 except:
-    LOB_AVAILABLE = False
-    LOB_API_KEY = ""
+    pass
 
-def send_letter(pdf_path, to_addr, from_addr):
+def send_letter(pdf_path, to_address, from_address):
     """
-    Uploads PDF to Lob. 
-    to_addr and from_addr are dictionaries: {name, street, city, state, zip}
+    Sends a physical letter via Lob.
+    Handles both 'street' (simple) and 'address_line1' (official) formats.
     """
-    if not LOB_AVAILABLE:
-        print("⚠️ Simulation: Mail sent (No Lob API Key).")
-        return True
-
-    print(f"📮 Sending to Lob: {os.path.basename(pdf_path)}")
-    
-    url = "https://api.lob.com/v1/letters"
-    
     try:
-        with open(pdf_path, 'rb') as file:
-            payload = {
-                "description": "VerbaPost Letter",
-                "to[name]": to_addr['name'],
-                "to[address_line1]": to_addr['street'],
-                "to[address_city]": to_addr['city'],
-                "to[address_state]": to_addr['state'],
-                "to[address_zip]": to_addr['zip'],
-                "from[name]": from_addr['name'],
-                "from[address_line1]": from_addr['street'],
-                "from[address_city]": from_addr['city'],
-                "from[address_state]": from_addr['state'],
-                "from[address_zip]": from_addr['zip'],
-                "color": "false",
-                "use_type": "operational" # <--- THE FIX
+        # Helper to map keys safely
+        def map_address(addr):
+            return {
+                'name': addr.get('name'),
+                'address_line1': addr.get('address_line1') or addr.get('street'),
+                'address_city': addr.get('address_city') or addr.get('city'),
+                'address_state': addr.get('address_state') or addr.get('state'),
+                'address_zip': addr.get('address_zip') or addr.get('zip')
             }
-            
-            response = requests.post(
-                url, 
-                auth=(LOB_API_KEY, ''), 
-                data=payload, 
-                files={'file': file}
+
+        clean_to = map_address(to_address)
+        clean_from = map_address(from_address)
+
+        # Verify keys exist
+        if not clean_to['address_line1']:
+            return {"error": "Missing address line for recipient"}
+
+        with open(pdf_path, 'rb') as file:
+            response = lob.Letter.create(
+                description="VerbaPost Letter",
+                to_address=clean_to,
+                from_address=clean_from,
+                file=file,
+                color=True
             )
-            
-            if response.status_code == 200:
-                # Success!
-                lob_id = response.json()['id']
-                st.toast(f"✅ Lob ID: {lob_id}")
-                print(f"✅ Lob Success: {lob_id}")
-                return True
-            else:
-                # Error Handling
-                error_msg = response.json().get('error', {}).get('message', 'Unknown Error')
-                st.error(f"Lob Error: {error_msg}")
-                print(f"❌ Lob Error: {error_msg}")
-                return False
+            return response
 
     except Exception as e:
-        st.error(f"Connection Error: {e}")
-        return False
+        st.error(f"Mailer Error: {e}")
+        return None
