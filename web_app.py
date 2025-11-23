@@ -5,7 +5,7 @@ import auth_engine
 import payment_engine
 import database
 
-# FORCE RELOAD of UI Modules to see changes instantly
+# FORCE RELOAD
 importlib.reload(ui_splash)
 
 # 1. INTERCEPT STRIPE RETURN
@@ -14,7 +14,7 @@ if "session_id" in qp:
     if "current_view" not in st.session_state:
         st.session_state.current_view = "main_app"
 
-# 2. IMPORTS (Post-Reload)
+# 2. IMPORTS
 from ui_splash import show_splash
 from ui_main import show_main_app
 from ui_login import show_login
@@ -88,11 +88,23 @@ elif st.session_state.current_view == "main_app":
         
         if st.session_state.get("user"):
             st.caption(f"User: {st.session_state.user_email}")
-            if st.session_state.user.user.email == "tjkarat@gmail.com": 
-                if st.button("🔐 Admin Panel", type="primary"):
-                    st.session_state.current_view = "admin"
-                    st.rerun()
+            
+            # SECURE ADMIN CHECK
+            try:
+                admin_email = st.secrets["admin"]["email"]
+                if st.session_state.user.user.email == admin_email: 
+                    if st.button("🔐 Admin Panel", type="primary"):
+                        st.session_state.current_view = "admin"
+                        st.rerun()
+            except: pass
+
             if st.button("Log Out"):
                 for key in list(st.session_state.keys()): del st.session_state[key]
                 st.rerun()
+                
     show_main_app()
+
+# 6. FOOTER
+with st.sidebar:
+    st.divider()
+    st.markdown("📧 **Help:** support@verbapost.com")
