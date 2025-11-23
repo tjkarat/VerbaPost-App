@@ -1,10 +1,11 @@
 import streamlit as st
+import importlib
+import ui_splash
 import auth_engine 
 import payment_engine
 import database
 
 # 1. INTERCEPT STRIPE RETURN
-# This must run before any UI is rendered to catch the redirect
 qp = st.query_params
 if "session_id" in qp:
     if "current_view" not in st.session_state:
@@ -15,6 +16,7 @@ from ui_splash import show_splash
 from ui_main import show_main_app
 from ui_login import show_login
 from ui_admin import show_admin
+from ui_legal import show_legal # <--- NEW IMPORT
 
 # 3. CONFIG
 st.set_page_config(
@@ -82,6 +84,8 @@ elif st.session_state.current_view == "login":
     show_login(handle_login, handle_signup)
 elif st.session_state.current_view == "admin":
     show_admin()
+elif st.session_state.current_view == "legal": # <--- NEW ROUTE
+    show_legal()
 elif st.session_state.current_view == "main_app":
     with st.sidebar:
         if st.button("🏠 Home", use_container_width=True):
@@ -106,7 +110,10 @@ elif st.session_state.current_view == "main_app":
                 
     show_main_app()
 
-# 7. FOOTER
+# 7. FOOTER WITH LEGAL LINKS
 with st.sidebar:
     st.divider()
     st.markdown("📧 **Help:** support@verbapost.com")
+    if st.button("⚖️ Terms & Privacy", type="secondary"):
+        st.session_state.current_view = "legal"
+        st.rerun()
