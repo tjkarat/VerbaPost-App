@@ -2,7 +2,7 @@ import streamlit.components.v1 as components
 
 def inject_ga():
     # REPLACE 'G-XXXXXXXXXX' with your actual Measurement ID from Google Analytics
-    measurement_id = 'G-XXXXXXXXXX' 
+    measurement_id = 'G-D3P178CESF' 
     
     ga_code = f"""
     <script async src="https://www.googletagmanager.com/gtag/js?id={measurement_id}"></script>
