@@ -33,18 +33,22 @@ def validate_zip(zipcode, state):
     return True, "Valid"
 
 def reset_app():
-    keys = ["audio_path", "transcribed_text", "overage_agreed", "payment_complete", "stripe_url", "last_config", "processed_ids", "locked_tier", "sig_data"]
-    for k in keys:
-        if k in st.session_state: del st.session_state[k]
+    # SOFT RESET
+    st.session_state.app_mode = "store"
+    st.session_state.audio_path = None
+    st.session_state.transcribed_text = ""
+    st.session_state.overage_agreed = False
+    st.session_state.payment_complete = False
+    st.session_state.stripe_url = None
+    st.session_state.sig_data = None
     
-    # Clear address inputs
+    # Clear addresses
     addr_keys = ["to_name", "to_street", "to_city", "to_state", "to_zip", 
                  "from_name", "from_street", "from_city", "from_state", "from_zip"]
     for k in addr_keys:
         st.session_state[k] = ""
         
     st.query_params.clear()
-    st.session_state.app_mode = "store"
     st.rerun()
 
 def show_main_app():
@@ -64,7 +68,7 @@ def show_main_app():
     for k, v in defaults.items():
         if k not in st.session_state: st.session_state[k] = v
 
-    # --- 1. AUTO-DETECT RETURN ---
+    # --- 1. AUTO-DETECT RETURN FROM STRIPE ---
     qp = st.query_params
     if "session_id" in qp:
         session_id = qp["session_id"]
@@ -73,8 +77,8 @@ def show_main_app():
                 st.session_state.payment_complete = True
                 st.session_state.processed_ids.append(session_id)
                 st.toast("✅ Payment Confirmed!")
-                st.session_state.app_mode = "workspace"
                 
+                st.session_state.app_mode = "workspace"
                 if "tier" in qp: st.session_state.locked_tier = qp["tier"]
                 if "lang" in qp: st.session_state.selected_language = qp["lang"]
                 
@@ -85,6 +89,7 @@ def show_main_app():
                     if key in qp: st.session_state[key] = qp[key]
             else:
                 st.error("Payment verification failed.")
+            
         st.query_params.clear() 
 
     # --- SIDEBAR ---
@@ -102,23 +107,21 @@ def show_main_app():
         c_tier, c_lang = st.columns(2)
         with c_tier:
             service_tier = st.radio("Letter Type:", 
-                [f"⚡ Standard ()", f"🏺 Heirloom ()", f"🏛️ Civic ()"],
+                [f"⚡ Standard (${COST_STANDARD})", f"🏺 Heirloom (${COST_HEIRLOOM})", f"🏛️ Civic (${COST_CIVIC})"],
                 index=0, key="tier_select"
             )
         with c_lang:
-            options = ["English", "Japanese", "Chinese", "Korean"]
-            # Try to pre-select based on user profile
             default_idx = 0
-            saved_lang = st.session_state.get("selected_language", "English")
-            if saved_lang in options: default_idx = options.index(saved_lang)
-            
+            user_lang = st.session_state.get("selected_language", "English")
+            options = ["English", "Japanese", "Chinese", "Korean"]
+            if user_lang in options: default_idx = options.index(user_lang)
             language = st.selectbox("Language:", options, index=default_idx, key="lang_select")
         
         if "Standard" in service_tier: price = COST_STANDARD; tier_name = "Standard"
         elif "Heirloom" in service_tier: price = COST_HEIRLOOM; tier_name = "Heirloom"
         elif "Civic" in service_tier: price = COST_CIVIC; tier_name = "Civic"
         
-        st.info(f"**Total: **")
+        st.info(f"**Total: ${price}**")
         
         current_config = f"{service_tier}_{price}_{language}"
         if "stripe_url" not in st.session_state or st.session_state.get("last_config") != current_config:
@@ -136,9 +139,8 @@ def show_main_app():
                  st.session_state.last_config = current_config
              
         if st.session_state.stripe_url:
-            # WARNING VERBIAGE
-            st.warning("⚠️ **Security Notice:** Payment opens in a **New Tab**. You will automatically return here to write your letter.")
-            st.link_button(f"💳 Pay  & Start", st.session_state.stripe_url, type="primary")
+            st.warning("⚠️ **Note:** Payment opens in a **New Tab**. You will return here automatically.")
+            st.link_button(f"💳 Pay ${price} & Start", st.session_state.stripe_url, type="primary")
         else:
             st.error("System Error: Payment link failed.")
 
@@ -153,7 +155,7 @@ def show_main_app():
 
         st.success(f"🔓 **{locked_tier}** Unlocked ({locked_lang})")
 
-        # ADDRESSING FORM (Catches Autofill)
+        # Addressing
         st.subheader("1. Addressing")
         with st.form("address_form"):
             col_to, col_from = st.tabs(["👉 Recipient", "👈 Sender"])
@@ -179,7 +181,6 @@ def show_main_app():
                 from_state = c3.text_input("Your State", value=get_val("from_state"))
                 from_zip = c4.text_input("Your Zip", value=get_val("from_zip"))
             
-            # THIS BUTTON CATCHES THE AUTOFILL
             save_btn = st.form_submit_button("💾 Save Addresses")
 
         if save_btn:
@@ -199,10 +200,13 @@ def show_main_app():
         # Dictate
         st.divider()
         st.subheader("3. Dictate")
-        st.info("Tap the microphone to start. Tap again to stop.")
+        
+        # --- RESTORED INSTRUCTIONS ---
+        st.info("👇 **How to Record:**\n1. Tap the **Microphone Icon** below.\n2. Speak your message.\n3. Tap the **Red Square** to stop.")
+        
         audio_val = st.audio_input("Record")
         
-        # Gates
+        # Gate
         valid_sender = st.session_state.get("from_name") and st.session_state.get("from_street")
         valid_recipient = st.session_state.get("to_name") and st.session_state.get("to_street")
         if is_civic and not valid_sender: st.warning("⚠️ Please click **'Save Addresses'** first."); st.stop()
@@ -236,7 +240,6 @@ def show_main_app():
     #  PHASE 4: FINALIZE
     # ==================================================
     elif st.session_state.app_mode == "finalizing":
-        # ... (Load vars) ...
         locked_tier = st.session_state.get("locked_tier", "Standard")
         locked_lang = st.session_state.get("selected_language", "English")
         is_civic = "Civic" in locked_tier; is_heirloom = "Heirloom" in locked_tier
@@ -262,7 +265,6 @@ def show_main_app():
             filename_pdf = f"VerbaPost_{safe_name}_{today_str}.pdf"
 
             if is_civic:
-                # Civic Logic
                 full_addr = f"{fr_s}, {fr_c}, {fr_st} {fr_z}"
                 try: targets = civic_engine.get_reps(full_addr)
                 except: targets = []
@@ -280,15 +282,15 @@ def show_main_app():
                 with zipfile.ZipFile(zip_buffer, "w") as zf:
                     for f in files: zf.write(f, os.path.basename(f))
                 st.download_button("📦 Download All", zip_buffer.getvalue(), f"VerbaPost_Civic_{today_str}.zip")
-
+            
             else:
-                # Standard Logic
                 pdf = letter_format.create_pdf(
                     st.session_state.transcribed_text, 
                     f"{to_n}\n{to_s}\n{to_c}, {to_st} {to_z}", 
                     f"{fr_n}\n{fr_s}\n{fr_c}, {fr_st} {fr_z}", 
                     is_heirloom, locked_lang, filename_pdf, sig_path
                 )
+                
                 if not is_heirloom:
                      addr_to = {'name': to_n, 'address_line1': to_s, 'address_city': to_c, 'address_state': to_st, 'address_zip': to_z}
                      addr_from = {'name': fr_n, 'address_line1': fr_s, 'address_city': fr_c, 'address_state': fr_st, 'address_zip': fr_z}
@@ -296,7 +298,7 @@ def show_main_app():
                 else:
                      if "letter_id" in st.query_params:
                          database.update_letter_status(st.query_params["letter_id"], "Queued", st.session_state.transcribed_text)
-                
+
                 with open(pdf, "rb") as f:
                     st.download_button("Download Copy", f, filename_pdf)
 
