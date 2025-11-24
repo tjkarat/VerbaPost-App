@@ -1,13 +1,6 @@
 streamlit
-stripe
-lob
-supabase
-openai-whisper
-pydub
 streamlit-drawable-canvas
-requests
-sqlalchemy
-psycopg2-binary
-fpdf2
-zipcodes
-pandas
+supabase
+stripe
+openai
+Pillow
